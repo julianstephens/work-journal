@@ -1,0 +1,29 @@
+{
+  "name": "work-journal",
+  "version": "1.0.0",
+  "description": "PocketBase-backed personal work journal",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --dir frontend run dev --host",
+    "build": "pnpm --dir frontend run build",
+    "lint": "pnpm --dir frontend run lint",
+    "test": "echo \"No tests configured yet\" && exit 0"
+  },
+  "keywords": [
+    "work-journal",
+    "pocketbase",
+    "react",
+    "tasks"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "11.24.0",
+      "onFail": "download"
+    }
+  },
+  "packageManager": "pnpm@11.24.0",
+  "type": "module"
+}
