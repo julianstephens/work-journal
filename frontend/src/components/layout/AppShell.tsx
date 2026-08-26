@@ -12,7 +12,7 @@ import {
     Text,
 } from '@chakra-ui/react';
 import { useQueryClient } from '@tanstack/react-query';
-import { CircleCheckBig, FileText, FolderKanban, Home, Inbox, LogOut, PanelLeftClose, PanelLeftOpen, Plus, Search } from 'lucide-react';
+import { CircleCheckBig, Command, FileText, FolderKanban, Home, Inbox, LogOut, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/auth-context';
@@ -20,6 +20,7 @@ import { createProject } from '../../features/projects/api';
 import { useProjects } from '../../features/projects/useProjects';
 import { createTask, listInboxTasks, listTasksForProject, toggleTaskCompletion } from '../../features/tasks/api';
 import { addTaskToToday, listToday } from '../../features/today/api';
+import { makeUserScopedStorageKey, readStoredBoolean, writeStoredBoolean } from '../../lib/local-storage';
 import { queryKeys } from '../../lib/query-keys';
 import { CommandPalette, type CommandPaletteItem } from '../command/CommandPalette';
 
@@ -49,9 +50,10 @@ function AppShell() {
     const navigate = useNavigate();
     const location = useLocation();
     const queryClient = useQueryClient();
-    const { logout } = useAuth();
+    const { user, logout } = useAuth();
     const { data: projects = [], isLoading } = useProjects();
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const sidebarStorageKey = useMemo(() => makeUserScopedStorageKey('ui.sidebar.collapsed', user?.id), [user?.id]);
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => readStoredBoolean(sidebarStorageKey, false));
     const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
     const [dialog, setDialog] = useState<AppDialog | null>(null);
     const [dialogValue, setDialogValue] = useState('');
@@ -71,6 +73,14 @@ function AppShell() {
     const toggleSidebar = useCallback(() => {
         setIsSidebarCollapsed((current) => !current);
     }, []);
+
+    useEffect(() => {
+        setIsSidebarCollapsed(readStoredBoolean(sidebarStorageKey, false));
+    }, [sidebarStorageKey]);
+
+    useEffect(() => {
+        writeStoredBoolean(sidebarStorageKey, isSidebarCollapsed);
+    }, [isSidebarCollapsed, sidebarStorageKey]);
 
     const createTaskForCurrentView = useCallback(async (title?: string, projectId?: string | null, addToToday?: boolean) => {
         const value = title?.trim();
@@ -272,6 +282,7 @@ function AppShell() {
         <Flex minH='100vh' bg='var(--app-bg)' color='var(--app-text)'>
             <Box
                 as='aside'
+                data-tooltip-scope={isSidebarCollapsed ? undefined : 'exclude'}
                 w={isSidebarCollapsed ? '76px' : '264px'}
                 borderRight='1px solid'
                 borderColor='var(--panel-border)'
@@ -295,19 +306,19 @@ function AppShell() {
                         {!isSidebarCollapsed ? (
                             <IconButton
                                 aria-label='Open command palette'
-                                title='Open command palette (Ctrl/Cmd+K)'
+                                data-tooltip-content='Open command palette'
+                                data-tooltip-scope='include'
                                 size='sm'
                                 variant='ghost'
                                 colorScheme='gray'
                                 _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
                                 onClick={() => setIsCommandPaletteOpen(true)}
                             >
-                                <Search size={16} />
+                                <Command size={16} />
                             </IconButton>
                         ) : null}
                         <IconButton
                             aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                            title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                             size='sm'
                             variant='ghost'
                             colorScheme='gray'
@@ -335,7 +346,7 @@ function AppShell() {
                                     justifyContent={isSidebarCollapsed ? 'center' : 'flex-start'}
                                     w='full'
                                     colorScheme='gray'
-                                    title={label}
+                                    aria-label={label}
                                     border='1px solid'
                                     borderColor='transparent'
                                     bg={isActive ? 'var(--accent-muted)' : 'transparent'}
@@ -400,7 +411,8 @@ function AppShell() {
                                 key={project.id}
                                 variant='ghost'
                                 size='sm'
-                                title={project.name}
+                                aria-label='Open project'
+                                data-tooltip-content={project.name}
                                 _hover={{ bg: 'var(--panel-bg-soft)' }}
                                 onClick={() => navigate(`/projects/${project.id}`)}
                             >
@@ -415,10 +427,10 @@ function AppShell() {
                         variant='ghost'
                         w='full'
                         justifyContent={isSidebarCollapsed ? 'center' : 'flex-start'}
+                        aria-label='Log out'
                         colorScheme='gray'
                         _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
                         onClick={handleLogout}
-                        title='Log out'
                     >
                         <LogOut size={16} />
                         {!isSidebarCollapsed ? <Box as='span' ml={2}>Log out</Box> : null}

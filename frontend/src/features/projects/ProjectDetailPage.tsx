@@ -29,6 +29,7 @@ import {
     Check,
     CornerDownRight,
     CornerUpLeft,
+    Edit2,
     FileText,
     GripVertical,
     Plus,
@@ -617,6 +618,7 @@ function ProjectDetailPage() {
                                                             borderColor='var(--control-border)'
                                                             color='var(--text-soft)'
                                                             _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
+                                                            data-tooltip-content='Add child task'
                                                             onClick={() => {
                                                                 const childTitle = window.prompt('Child task title');
                                                                 const title = childTitle?.trim();
@@ -634,6 +636,7 @@ function ProjectDetailPage() {
                                                             borderColor='var(--control-border)'
                                                             color='var(--text-soft)'
                                                             _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
+                                                            data-tooltip-content={isEditing ? 'Save task title' : 'Edit task title'}
                                                             onClick={() => {
                                                                 if (isEditing) {
                                                                     commitTaskTitle(task.id, task.title);
@@ -643,7 +646,7 @@ function ProjectDetailPage() {
                                                                 }
                                                             }}
                                                         >
-                                                            {isEditing ? <Check size={12} /> : <Save size={12} />}
+                                                            {isEditing ? <Check size={12} /> : <Edit2 size={12} />}
                                                         </Button>
                                                         {isEditing ? (
                                                             <Button
@@ -653,6 +656,7 @@ function ProjectDetailPage() {
                                                                 borderColor='var(--control-border)'
                                                                 color='var(--text-soft)'
                                                                 _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
+                                                                data-tooltip-content='Cancel editing task title'
                                                                 onClick={() => {
                                                                     setEditingTaskId(null);
                                                                     setDraftTaskTitle('');
@@ -669,6 +673,7 @@ function ProjectDetailPage() {
                                                             color='var(--text-soft)'
                                                             _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
                                                             disabled={siblingIndex <= 0}
+                                                            data-tooltip-content='Move task up'
                                                             onClick={() => applyTaskTreeUpdate(moveTaskUp(tasks, task.id))}
                                                         >
                                                             <ArrowUp size={12} />
@@ -681,6 +686,7 @@ function ProjectDetailPage() {
                                                             color='var(--text-soft)'
                                                             _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
                                                             disabled={siblingIndex === -1 || siblingIndex >= siblingRows.length - 1}
+                                                            data-tooltip-content='Move task down'
                                                             onClick={() => applyTaskTreeUpdate(moveTaskDown(tasks, task.id))}
                                                         >
                                                             <ArrowDown size={12} />
@@ -693,6 +699,7 @@ function ProjectDetailPage() {
                                                             color='var(--text-soft)'
                                                             _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
                                                             disabled={taskRows.findIndex((item) => item.task.id === task.id) === 0}
+                                                            data-tooltip-content='Indent task'
                                                             onClick={() => applyTaskTreeUpdate(indentTask(tasks, task.id))}
                                                         >
                                                             <CornerDownRight size={12} />
@@ -705,6 +712,7 @@ function ProjectDetailPage() {
                                                             color='var(--text-soft)'
                                                             _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
                                                             disabled={!task.parent}
+                                                            data-tooltip-content='Outdent task'
                                                             onClick={() => applyTaskTreeUpdate(outdentTask(tasks, task.id))}
                                                         >
                                                             <CornerUpLeft size={12} />
@@ -716,6 +724,7 @@ function ProjectDetailPage() {
                                                             borderColor='var(--control-border)'
                                                             color='var(--text-soft)'
                                                             _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
+                                                            data-tooltip-content='Move task under another task'
                                                             onClick={() => {
                                                                 setMovingTaskId(task.id);
                                                                 setMoveTargetId('');
@@ -730,6 +739,7 @@ function ProjectDetailPage() {
                                                             borderColor='var(--control-border)'
                                                             color='var(--text-soft)'
                                                             _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
+                                                            data-tooltip-content='Open task menu'
                                                             onClick={() => setMenuTaskId(menuTaskId === task.id ? null : task.id)}
                                                         >
                                                             •••
@@ -772,6 +782,7 @@ function ProjectDetailPage() {
                                                         borderColor='var(--control-border)'
                                                         color='var(--text-soft)'
                                                         _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
+                                                        data-tooltip-disabled='true'
                                                         loading={(addToTodayMutation.isPending && addToTodayMutation.variables === task.id) || (removeFromTodayMutation.isPending && removeFromTodayMutation.variables === dailyTaskIds.get(task.id))}
                                                         onClick={() => {
                                                             const dailyTaskId = dailyTaskIds.get(task.id);
@@ -890,6 +901,7 @@ function ProjectDetailPage() {
                                                             borderColor='red.300'
                                                             color='red.600'
                                                             _hover={{ bg: 'red.50', color: 'red.700' }}
+                                                            data-tooltip-disabled='true'
                                                             onClick={() => deleteNoteMutation.mutate(note.id)}
                                                             loading={deleteNoteMutation.isPending}
                                                         >

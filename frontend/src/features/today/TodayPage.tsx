@@ -192,6 +192,7 @@ function TodayPage() {
                                             {row.depth > 0 ? <Text fontSize='xs' color='var(--text-muted)'>Subtask</Text> : null}
                                             <Button
                                                 type='button'
+                                                aria-label={`Add child task to ${item.task.title}`}
                                                 size='xs'
                                                 variant='outline'
                                                 bg='var(--panel-bg)'
@@ -199,9 +200,12 @@ function TodayPage() {
                                                 color='var(--text-soft)'
                                                 _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
                                                 onClick={() => openChildEditor(item.task.id)}
+                                                minW='28px'
+                                                w='28px'
+                                                h='28px'
+                                                p={0}
                                             >
                                                 <Plus size={12} />
-                                                <Box as='span' ml={1}>Child</Box>
                                             </Button>
                                             <Button
                                                 type='button'

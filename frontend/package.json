@@ -17,12 +17,15 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
+    "@tanstack/highlight": "^0.0.10",
+    "@tanstack/markdown": "^0.0.13",
     "@tanstack/react-query": "^5.102.3",
     "lucide-react": "^1.34.0",
     "pocketbase": "^0.28.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.2",
+    "react-tooltip": "^6.0.8",
     "zod": "^4.4.3"
   },
   "devDependencies": {

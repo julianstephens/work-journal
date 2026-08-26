@@ -26,6 +26,12 @@ importers:
       '@emotion/styled':
         specifier: ^11.14.1
         version: 11.14.1(@emotion/react@11.14.0(@types/react@19.2.18)(react@19.2.8))(@types/react@19.2.18)(react@19.2.8)
+      '@tanstack/highlight':
+        specifier: ^0.0.10
+        version: 0.0.10
+      '@tanstack/markdown':
+        specifier: ^0.0.13
+        version: 0.0.13(react@19.2.8)
       '@tanstack/react-query':
         specifier: ^5.102.3
         version: 5.102.3(react@19.2.8)
@@ -44,6 +50,9 @@ importers:
       react-router-dom:
         specifier: ^7.18.2
         version: 7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react-tooltip:
+        specifier: ^6.0.8
+        version: 6.0.8(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -208,6 +217,9 @@ packages:
 
   '@floating-ui/core@1.8.0':
     resolution: {integrity: sha512-0CIZ5itps/8x7BG8dEIhs53BvCUH2PCoogtakwRTut+Arm58sJooJ0AuZhLw2HJYIR5cMLNPBSS728sPho2khQ==}
+
+  '@floating-ui/dom@1.7.6':
+    resolution: {integrity: sha512-9gZSAI5XM36880PPMm//9dfiEngYoC6Am2izES1FF406YFsjvyBMmeJ2g4SAju3xWwtuynNRFL2s9hgxpLI5SQ==}
 
   '@floating-ui/dom@1.8.0':
     resolution: {integrity: sha512-yXSrzeHZBTZadLOlfyhCkJHNeLJnHRnRInwdZ40L7ZiaAtrBwoYlsDrX3v5zB1Utk7CLfzcOVnVVWoXEky7Ceg==}
@@ -464,6 +476,21 @@ packages:
 
   '@swc/helpers@0.5.23':
     resolution: {integrity: sha512-5lSsMOTXURePglDfvuAQUqkGek9Hg2kksOYay2m0+XR++b2NWYL/4sWyuvVBIs8oKnJaxkdi9whaL/sqN13afw==}
+
+  '@tanstack/highlight@0.0.10':
+    resolution: {integrity: sha512-RNWn4BYgroDnHSdWduHVUN3hXM5OZUVwynuY2Fwh4el2hVy0woe9XZBZ5IIxC50h1y8SEYkBipS+cPgdzRc7Zg==}
+    engines: {node: '>=18'}
+
+  '@tanstack/markdown@0.0.13':
+    resolution: {integrity: sha512-ZSQP2ulBvlPzdpZeRheBJnaELo7e4ET/D/XrfgweHyqhhLMN5vUJJAUl7ufSRd7GlfO/vwdzjKPh0E0JwqJkDA==}
+    peerDependencies:
+      octane: '>=0.1.12'
+      react: '>=18'
+    peerDependenciesMeta:
+      octane:
+        optional: true
+      react:
+        optional: true
 
   '@tanstack/query-core@5.102.3':
     resolution: {integrity: sha512-5O2VEceonqC4uaTLUGglb0hgPouWCJ4K1ykVWyeV8aThhdNCzwpwu01bYoaRNJ9mgFUXS7Kf9utJ46ysT8m+bw==}
@@ -745,6 +772,10 @@ packages:
     resolution: {integrity: sha512-P8BjAsXvZS+VIDUI11hHCQEv74YT67YUi5JJFNWIqL235sBmjX4+qx9Muvls5ivyNENctx46xQLQ3aTuE7ssaQ==}
     engines: {node: '>=6'}
 
+  clsx@2.1.1:
+    resolution: {integrity: sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==}
+    engines: {node: '>=6'}
+
   convert-source-map@1.9.0:
     resolution: {integrity: sha512-ASFBup0Mz1uyiIjANan1jzLQami9z1PoYSZCiiYW2FczPbenXc45FZdBZLzOT+r6+iciuEModtmCti+hjaAk0A==}
 
@@ -997,6 +1028,12 @@ packages:
     peerDependenciesMeta:
       react-dom:
         optional: true
+
+  react-tooltip@6.0.8:
+    resolution: {integrity: sha512-VPjtBPyoFwq72QVE6GYB/LtfEg/mnFBHqL0nD0oNNmjH8EZYFyBwgnFKNCOp5zCte45k1weXjKc0wXE6NICpfg==}
+    peerDependencies:
+      react: '>=16.14.0'
+      react-dom: '>=16.14.0'
 
   react@19.2.8:
     resolution: {integrity: sha512-PWaYA1L/q9u2u7xYQi+Y3L3Yfnie7XyLeaJICV1MGD6LprsBxcAqGjYyr0eY3p+QdsA+x/Irkt4Qif8D63+Sbw==}
@@ -1360,6 +1397,11 @@ snapshots:
     dependencies:
       '@floating-ui/utils': 0.2.12
 
+  '@floating-ui/dom@1.7.6':
+    dependencies:
+      '@floating-ui/core': 1.8.0
+      '@floating-ui/utils': 0.2.12
+
   '@floating-ui/dom@1.8.0':
     dependencies:
       '@floating-ui/core': 1.8.0
@@ -1500,6 +1542,12 @@ snapshots:
   '@swc/helpers@0.5.23':
     dependencies:
       tslib: 2.8.1
+
+  '@tanstack/highlight@0.0.10': {}
+
+  '@tanstack/markdown@0.0.13(react@19.2.8)':
+    optionalDependencies:
+      react: 19.2.8
 
   '@tanstack/query-core@5.102.3': {}
 
@@ -2102,6 +2150,8 @@ snapshots:
 
   callsites@3.1.0: {}
 
+  clsx@2.1.1: {}
+
   convert-source-map@1.9.0: {}
 
   cookie@1.1.1: {}
@@ -2301,6 +2351,13 @@ snapshots:
       react: 19.2.8
       set-cookie-parser: 2.7.2
     optionalDependencies:
+      react-dom: 19.2.8(react@19.2.8)
+
+  react-tooltip@6.0.8(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+    dependencies:
+      '@floating-ui/dom': 1.7.6
+      clsx: 2.1.1
+      react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
 
   react@19.2.8: {}

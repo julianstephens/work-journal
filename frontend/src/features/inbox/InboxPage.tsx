@@ -296,6 +296,7 @@ function InboxPage() {
                                                 {row.depth > 0 ? <Text fontSize='xs' color='var(--text-muted)'>Subtask</Text> : null}
                                                 <Button
                                                     type='button'
+                                                    aria-label={`Add child task to ${item.title}`}
                                                     size='xs'
                                                     variant='outline'
                                                     bg='var(--panel-bg)'
@@ -303,9 +304,12 @@ function InboxPage() {
                                                     color='var(--text-soft)'
                                                     _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
                                                     onClick={() => openChildEditor(item.id)}
+                                                    minW='28px'
+                                                    w='28px'
+                                                    h='28px'
+                                                    p={0}
                                                 >
                                                     <Plus size={12} />
-                                                    <Box as='span' ml={1}>Child</Box>
                                                 </Button>
                                                 <Button
                                                     type='button'
@@ -314,6 +318,7 @@ function InboxPage() {
                                                     borderColor='var(--control-border)'
                                                     color='var(--text-soft)'
                                                     _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
+                                                    data-tooltip-disabled='true'
                                                     loading={addToTodayMutation.isPending && addToTodayMutation.variables === item.id || removeFromTodayMutation.isPending && removeFromTodayMutation.variables === dailyTaskIds.get(item.id)}
                                                     onClick={() => {
                                                         const dailyTaskId = dailyTaskIds.get(item.id);

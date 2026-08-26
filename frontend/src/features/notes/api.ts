@@ -1,6 +1,104 @@
 import { COLLECTIONS, pb, requireAuthUserId } from '../../lib/pocketbase';
 import type { Note } from '../../types/pocketbase';
 
+type RecordLike = Partial<Note> & {
+    get?: (field: string) => unknown;
+    toJSON?: () => unknown;
+    export?: () => unknown;
+};
+
+function readRecordValue(record: RecordLike, key: string): unknown {
+    const direct = record[key as keyof RecordLike];
+    if (direct !== undefined) return direct;
+
+    if (typeof record.get === 'function') {
+        return record.get(key);
+    }
+
+    if (typeof record.toJSON === 'function') {
+        const json = record.toJSON();
+        if (json && typeof json === 'object') {
+            const value = (json as Record<string, unknown>)[key];
+            if (value !== undefined) return value;
+        }
+    }
+
+    if (typeof record.export === 'function') {
+        const exported = record.export();
+        if (exported && typeof exported === 'object') {
+            const value = (exported as Record<string, unknown>)[key];
+            if (value !== undefined) return value;
+        }
+    }
+
+    return undefined;
+}
+
+function asString(value: unknown, fallback = ''): string {
+    if (typeof value === 'string') return value;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString();
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    return fallback;
+}
+
+function applyLifecycleFallbacks(note: Note, fallbackCreated = '', fallbackUpdated = ''): Note {
+    const fallbackTimestamp = new Date().toISOString();
+    const created = note.created || fallbackCreated || fallbackTimestamp;
+    const updated = note.updated || fallbackUpdated || note.created || fallbackCreated || fallbackTimestamp;
+    return {
+        ...note,
+        created,
+        updated,
+    };
+}
+
+function hasLifecycle(note: Note): boolean {
+    return Boolean(note.created && note.updated);
+}
+
+function normalizeNote(record: RecordLike): Note {
+    const fallbackTimestamp = new Date().toISOString();
+    const created = asString(
+        readRecordValue(record, 'created')
+        ?? readRecordValue(record, 'createdAt')
+        ?? readRecordValue(record, 'created_at'),
+    ) || fallbackTimestamp;
+    const updated = asString(
+        readRecordValue(record, 'updated')
+        ?? readRecordValue(record, 'updatedAt')
+        ?? readRecordValue(record, 'updated_at'),
+    ) || created;
+
+    return {
+        id: asString(readRecordValue(record, 'id')),
+        user: asString(readRecordValue(record, 'user')),
+        project: (readRecordValue(record, 'project') as string | null | undefined) ?? null,
+        title: asString(readRecordValue(record, 'title')),
+        body: asString(readRecordValue(record, 'body')),
+        created,
+        updated,
+    };
+}
+
+async function fetchNormalizedNote(noteId: string): Promise<Note> {
+    const record = await pb.collection(COLLECTIONS.notes).getOne(noteId) as RecordLike;
+    return normalizeNote(record);
+}
+
+async function hydrateMissingLifecycle(notes: Note[]): Promise<Note[]> {
+    const missing = notes.filter((note) => !hasLifecycle(note));
+    if (missing.length === 0) return notes;
+
+    const hydrated = await Promise.all(missing.map((note) => fetchNormalizedNote(note.id)));
+    const byId = new Map(hydrated.map((note) => [note.id, note]));
+
+    return notes.map((note) => {
+        const refreshed = byId.get(note.id);
+        if (!refreshed) return note;
+        return applyLifecycleFallbacks(refreshed, note.created, note.updated);
+    });
+}
+
 function toTimestamp(value: string | null | undefined): number {
     if (!value) return 0;
     const time = Date.parse(value);
@@ -20,35 +118,60 @@ function sortNotesByUpdatedDescending(notes: Note[]): Note[] {
 }
 
 export async function listNotesForProject(projectId: string): Promise<Note[]> {
-    const notes = await pb.collection(COLLECTIONS.notes).getFullList({
+    const records = await pb.collection(COLLECTIONS.notes).getFullList({
         filter: `project = "${projectId}"`,
-    }) as Note[];
+    }) as RecordLike[];
+
+    const notes = await hydrateMissingLifecycle(records.map(normalizeNote));
 
     return sortNotesByCreatedAscending(notes);
 }
 
 export async function listNotes(): Promise<Note[]> {
-    const notes = await pb.collection(COLLECTIONS.notes).getFullList() as Note[];
+    const records = await pb.collection(COLLECTIONS.notes).getFullList() as RecordLike[];
+    const notes = await hydrateMissingLifecycle(records.map(normalizeNote));
 
     return sortNotesByUpdatedDescending(notes);
 }
 
 export async function getNote(noteId: string): Promise<Note> {
-    return pb.collection(COLLECTIONS.notes).getOne(noteId) as Promise<Note>;
+    return fetchNormalizedNote(noteId);
 }
 
 export async function createNote(input: { project?: string | null; title: string; body: string; }): Promise<Note> {
-    return pb.collection(COLLECTIONS.notes).create({
+    const payload = {
         user: requireAuthUserId(),
-        ...input,
-    }) as Promise<Note>;
+        title: input.title.trim() || 'Untitled note',
+        body: input.body.trim() || ' ',
+        ...(input.project ? { project: input.project } : {}),
+    };
+
+    const record = await pb.collection(COLLECTIONS.notes).create(payload) as RecordLike;
+
+    const note = normalizeNote(record);
+    // Always hydrate from canonical record to avoid mutation responses omitting system fields.
+    const refreshed = await getNote(note.id);
+    const now = new Date().toISOString();
+    return hasLifecycle(refreshed)
+        ? refreshed
+        : applyLifecycleFallbacks(refreshed, note.created || now, note.updated || now);
 }
 
 export async function updateNote(
     noteId: string,
     input: Partial<Pick<Note, 'title' | 'body' | 'project'>>,
 ): Promise<Note> {
-    return pb.collection(COLLECTIONS.notes).update(noteId, input) as Promise<Note>;
+    const previous = await getNote(noteId);
+    await pb.collection(COLLECTIONS.notes).update(noteId, input);
+    // Always hydrate from canonical record to avoid mutation responses omitting system fields.
+    const refreshed = await getNote(noteId);
+    const preservedCreated = previous.created || refreshed.created || new Date().toISOString();
+    const fallbackUpdated = refreshed.updated || previous.updated || new Date().toISOString();
+    return {
+        ...refreshed,
+        created: preservedCreated,
+        updated: fallbackUpdated,
+    };
 }
 
 export async function deleteNote(noteId: string): Promise<void> {
