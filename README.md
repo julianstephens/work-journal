@@ -62,3 +62,17 @@ Custom collection names use the `work_journal_` prefix:
 - `work_journal_tasks`
 - `work_journal_notes`
 - `work_journal_daily_tasks`
+
+## Auth security notes
+
+- Browser DevTools Network always shows request payloads to the local browser user. This cannot be hidden by frontend code.
+- Login and signup now default to session-only auth persistence. Users can opt in to persistent auth with Remember me.
+- Production deployments should always use HTTPS for the app domain and `VITE_POCKETBASE_URL`.
+- Add proxy-level rate limiting for auth endpoints to reduce brute-force attempts.
+
+### Production checklist
+
+- Ensure app URL and PocketBase API URL are HTTPS.
+- Redirect all HTTP traffic to HTTPS.
+- Enable HSTS after TLS is verified.
+- Configure rate limiting for PocketBase auth routes at the proxy layer.

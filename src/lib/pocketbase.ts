@@ -1,8 +1,18 @@
-import PocketBase, { LocalAuthStore } from 'pocketbase';
+import PocketBase from 'pocketbase';
+import { authStore } from './auth-store';
 
-const authStore = new LocalAuthStore('work_journal_auth');
+const pocketBaseUrl = import.meta.env.VITE_POCKETBASE_URL ?? 'http://127.0.0.1:8090';
 
-export const pb = new PocketBase(import.meta.env.VITE_POCKETBASE_URL ?? 'http://127.0.0.1:8090', authStore);
+if (
+    import.meta.env.PROD
+    && typeof window !== 'undefined'
+    && window.location.protocol === 'https:'
+    && pocketBaseUrl.startsWith('http://')
+) {
+    throw new Error('Insecure PocketBase URL: use HTTPS for VITE_POCKETBASE_URL in production.');
+}
+
+export const pb = new PocketBase(pocketBaseUrl, authStore);
 
 // Prevent the PocketBase JS SDK from auto-canceling in-flight requests during
 // quick React route transitions or repeated optimistic queries.

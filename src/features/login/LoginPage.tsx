@@ -11,6 +11,7 @@ function LoginPage() {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [passwordConfirm, setPasswordConfirm] = useState('');
+    const [rememberMe, setRememberMe] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     if (isAuthenticated) {
@@ -28,15 +29,18 @@ function LoginPage() {
 
         try {
             if (mode === 'signin') {
-                await login(email, password);
+                await login(email, password, { rememberMe });
             } else {
-                await register(email, username, password);
+                await register(email, username, password, { rememberMe });
             }
 
             navigate('/today');
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Authentication failed.';
             setError(message);
+        } finally {
+            setPassword('');
+            setPasswordConfirm('');
         }
     };
 
@@ -71,12 +75,15 @@ function LoginPage() {
                     <Field.Root w='full'>
                         <Field.Label>Email</Field.Label>
                         <Input
+                            type='email'
                             value={email}
                             onChange={(event) => setEmail(event.target.value)}
                             placeholder='name@example.com'
                             bg='var(--control-bg)'
                             color='var(--control-text)'
                             borderColor='var(--control-border)'
+                            autoComplete='email'
+                            required
                         />
                     </Field.Root>
 
@@ -90,6 +97,7 @@ function LoginPage() {
                                 bg='var(--control-bg)'
                                 color='var(--control-text)'
                                 borderColor='var(--control-border)'
+                                autoComplete='username'
                                 required
                             />
                         </Field.Root>
@@ -105,6 +113,7 @@ function LoginPage() {
                             bg='var(--control-bg)'
                             color='var(--control-text)'
                             borderColor='var(--control-border)'
+                            autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
                             required
                         />
                     </Field.Root>
@@ -120,10 +129,30 @@ function LoginPage() {
                                 bg='var(--control-bg)'
                                 color='var(--control-text)'
                                 borderColor='var(--control-border)'
+                                autoComplete='new-password'
                                 required
                             />
                         </Field.Root>
                     ) : null}
+
+                    <label
+                        style={{
+                            alignSelf: 'flex-start',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            cursor: 'pointer',
+                            color: 'var(--text-muted)',
+                            fontSize: '0.925rem',
+                        }}
+                    >
+                        <input
+                            type='checkbox'
+                            checked={rememberMe}
+                            onChange={(event) => setRememberMe(event.target.checked)}
+                        />
+                        Remember me on this device
+                    </label>
 
                     <Button type='submit' w='full' bg='var(--accent)' color='white' _hover={{ bg: 'var(--accent-soft)' }} loading={isLoading}>
                         {mode === 'signin' ? 'Log in' : 'Create account'}
