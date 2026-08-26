@@ -15,7 +15,7 @@ A desktop-first personal work management app built with PocketBase + React + Typ
 
 ## Repository layout
 
-- `frontend/` — React frontend app
+- root app — React + TypeScript frontend
 - `pb_migrations/` — PocketBase schema migrations
 - `pb_public/` — static frontend assets for production hosting
 - `pb_data/` — local PocketBase SQLite data (ignored from version control)

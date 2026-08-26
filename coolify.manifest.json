@@ -1,0 +1,16 @@
+{
+  "projectId": "voh00v5jbwt09j807op5ksxb",
+  "destinationId": "ugsk8w0w0c0oc08wc4488s4w",
+  "serverId": "jk8w8scsg0gkw804ockg8g80",
+  "environmentName": "production",
+  "resources": [
+    {
+      "name": "work-journal",
+      "description": "The WorkJournal service.",
+      "dockerImageName": "ghcr.io/julianstephens/work-journal",
+      "envSecretName": "COOLIFY_ENV_WORK_JOURNAL",
+      "domains": "http://work.cyborgdev.cloud",
+      "portsExposes": "80"
+    }
+  ]
+}
