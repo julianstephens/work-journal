@@ -4,7 +4,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../app/auth-context';
 
 export function ProtectedRoute({ children }: { children: ReactNode; }) {
-    const { isAuthenticated, isLoading } = useAuth();
+    const { isAuthenticated, isLoading, authRedirectReason } = useAuth();
     const location = useLocation();
 
     if (isLoading) {
@@ -16,7 +16,16 @@ export function ProtectedRoute({ children }: { children: ReactNode; }) {
     }
 
     if (!isAuthenticated) {
-        return <Navigate to='/login' replace state={{ from: location.pathname }} />;
+        return (
+            <Navigate
+                to='/login'
+                replace
+                state={{
+                    from: `${location.pathname}${location.search}${location.hash}`,
+                    reason: authRedirectReason,
+                }}
+            />
+        );
     }
 
     return <>{children}</>;

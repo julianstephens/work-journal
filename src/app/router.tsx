@@ -1,5 +1,6 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { ProtectedRoute } from '../components/auth/ProtectedRoute';
+import { NotFoundPage, RouteErrorBoundary } from '../components/error/RouteFallback';
 import AppShell from '../components/layout/AppShell';
 import InboxPage from '../features/inbox/InboxPage';
 import LoginPage from '../features/login/LoginPage';
@@ -12,6 +13,7 @@ export const router = createBrowserRouter([
     {
         path: '/login',
         element: <LoginPage />,
+        errorElement: <RouteErrorBoundary />,
     },
     {
         path: '/',
@@ -20,6 +22,7 @@ export const router = createBrowserRouter([
                 <AppShell />
             </ProtectedRoute>
         ),
+        errorElement: <RouteErrorBoundary />,
         children: [
             { path: 'today', element: <TodayPage /> },
             { path: 'inbox', element: <InboxPage /> },
@@ -27,6 +30,12 @@ export const router = createBrowserRouter([
             { path: 'projects', element: <ProjectsPage /> },
             { path: 'projects/:projectId', element: <ProjectDetailPage /> },
             { index: true, element: <TodayPage /> },
+            { path: '*', element: <NotFoundPage /> },
         ],
+    },
+    {
+        path: '*',
+        element: <NotFoundPage />,
+        errorElement: <RouteErrorBoundary />,
     },
 ]);

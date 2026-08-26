@@ -29,7 +29,8 @@ The schema for v0.1 is intentionally simple and user-scoped.
 
 ### work_journal_notes
 - `user` relation -> users
-- `project` relation -> work_journal_projects required
+- `project` relation -> work_journal_projects optional
+- `task` relation -> work_journal_tasks optional
 - `title` text required
 - `body` text required
 

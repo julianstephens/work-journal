@@ -73,6 +73,7 @@ function normalizeNote(record: RecordLike): Note {
         id: asString(readRecordValue(record, 'id')),
         user: asString(readRecordValue(record, 'user')),
         project: (readRecordValue(record, 'project') as string | null | undefined) ?? null,
+        task: (readRecordValue(record, 'task') as string | null | undefined) ?? null,
         title: asString(readRecordValue(record, 'title')),
         body: asString(readRecordValue(record, 'body')),
         created,
@@ -138,12 +139,22 @@ export async function getNote(noteId: string): Promise<Note> {
     return fetchNormalizedNote(noteId);
 }
 
-export async function createNote(input: { project?: string | null; title: string; body: string; }): Promise<Note> {
+export async function findNoteForTask(projectId: string, taskId: string): Promise<Note | null> {
+    const records = await pb.collection(COLLECTIONS.notes).getFullList({
+        filter: `project = "${projectId}" && task = "${taskId}"`,
+    }) as RecordLike[];
+
+    if (records.length === 0) return null;
+    return hydrateMissingLifecycle(records.map(normalizeNote)).then((notes) => notes[0] ?? null);
+}
+
+export async function createNote(input: { project?: string | null; task?: string | null; title: string; body: string; }): Promise<Note> {
     const payload = {
         user: requireAuthUserId(),
         title: input.title.trim() || 'Untitled note',
         body: input.body.trim() || ' ',
         ...(input.project ? { project: input.project } : {}),
+        ...(input.task ? { task: input.task } : {}),
     };
 
     const record = await pb.collection(COLLECTIONS.notes).create(payload) as RecordLike;
@@ -159,7 +170,7 @@ export async function createNote(input: { project?: string | null; title: string
 
 export async function updateNote(
     noteId: string,
-    input: Partial<Pick<Note, 'title' | 'body' | 'project'>>,
+    input: Partial<Pick<Note, 'title' | 'body' | 'project' | 'task'>>,
 ): Promise<Note> {
     const previous = await getNote(noteId);
     await pb.collection(COLLECTIONS.notes).update(noteId, input);

@@ -12,6 +12,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, FolderPlus, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { EmptyCtaCard, LoadingSkeletonRows, SyncFailedBanner } from '../../components/ui/AsyncState';
+import { getActionErrorMessage } from '../../lib/action-feedback';
+import { pushAppToast } from '../../lib/app-toast';
 import { queryKeys } from '../../lib/query-keys';
 import { createProject } from './api';
 import { useProjects } from './useProjects';
@@ -19,7 +22,12 @@ import { useProjects } from './useProjects';
 function ProjectsPage() {
     const queryClient = useQueryClient();
     const navigate = useNavigate();
-    const { data: projects = [], isLoading } = useProjects();
+    const {
+        data: projects = [],
+        isLoading,
+        isError,
+        refetch,
+    } = useProjects();
     const [projectName, setProjectName] = useState('');
 
     const createMutation = useMutation({
@@ -27,8 +35,26 @@ function ProjectsPage() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
             setProjectName('');
+            pushAppToast({
+                tone: 'success',
+                title: 'Project created.',
+                description: 'Your project is ready.',
+            });
+        },
+        onError: (error) => {
+            pushAppToast({
+                tone: 'error',
+                title: 'Could not create project.',
+                description: getActionErrorMessage(error, 'Try again.'),
+            });
         },
     });
+
+    const submitCreateProject = () => {
+        const value = projectName.trim();
+        if (!value) return;
+        createMutation.mutate(value);
+    };
 
     return (
         <Stack gap={8} maxW='880px' mx={{ xl: 'auto' }}>
@@ -46,8 +72,7 @@ function ProjectsPage() {
                     onChange={(event) => setProjectName(event.target.value)}
                     onKeyDown={(event) => {
                         if (event.key !== 'Enter') return;
-                        const value = projectName.trim();
-                        if (value) createMutation.mutate(value);
+                        submitCreateProject();
                     }}
                     placeholder='Create a project'
                     flex='1'
@@ -55,19 +80,34 @@ function ProjectsPage() {
                     _focus={{ boxShadow: 'none' }}
                     bg='transparent'
                 />
-                <Button bg='var(--accent)' color='white' _hover={{ bg: 'var(--accent-soft)' }} borderRadius='7px' onClick={() => {
-                    const value = projectName.trim();
-                    if (value) createMutation.mutate(value);
-                }} loading={createMutation.isPending}>
+                <Button bg='var(--accent)' color='white' _hover={{ bg: 'var(--accent-soft)' }} borderRadius='7px' onClick={submitCreateProject} loading={createMutation.isPending}>
                     <FolderPlus size={15} />
                     <Box as='span' ml={2}>Create</Box>
                 </Button>
             </Flex>
 
+            {isError ? (
+                <SyncFailedBanner message='Sync failed. Could not load projects.' onRetry={() => { void refetch(); }} />
+            ) : null}
+
             {isLoading ? (
-                <Text color='var(--text-muted)'>Loading projects…</Text>
+                <LoadingSkeletonRows count={5} itemHeight='56px' itemRadius='10px' />
             ) : (
-                projects.length === 0 ? <Text color='var(--text-muted)'>No projects yet. Create one to group your work.</Text> : (
+                projects.length === 0 ? (
+                    <EmptyCtaCard
+                        title='No projects yet'
+                        description='Create your first project to organize notes and tasks.'
+                        actionLabel='Create first project'
+                        actionLoading={createMutation.isPending}
+                        onAction={() => {
+                            if (!projectName.trim()) {
+                                setProjectName('First project');
+                                return;
+                            }
+                            submitCreateProject();
+                        }}
+                    />
+                ) : (
                     <List.Root as='ul' listStyle='none' m='0' p='0' borderTop='1px solid' borderColor='var(--panel-border)' maxH={{ base: 'none', md: 'calc(100vh - 305px)' }} overflowY='auto' pr={1}>
                         {projects.map((project, index) => (
                             <List.Item key={project.id} borderBottom='1px solid' borderColor='var(--panel-border)'>

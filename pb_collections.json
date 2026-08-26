@@ -359,6 +359,20 @@
                 "type": "relation"
             },
             {
+                "cascadeDelete": false,
+                "collectionId": "wjtasks00000001",
+                "help": "",
+                "hidden": false,
+                "id": "relation1019283878",
+                "maxSelect": 1,
+                "minSelect": 0,
+                "name": "task",
+                "presentable": false,
+                "required": false,
+                "system": false,
+                "type": "relation"
+            },
+            {
                 "autogeneratePattern": "",
                 "help": "",
                 "hidden": false,

@@ -125,6 +125,7 @@ export function CommandPalette({ onClose, commands }: CommandPaletteProps) {
             <Box
                 maxW='720px'
                 w='min(92vw, 720px)'
+                maxH='calc(100vh - 2rem)'
                 mt={{ base: '10vh', md: '14vh' }}
                 mx='auto'
                 bg='var(--panel-bg)'
@@ -133,6 +134,8 @@ export function CommandPalette({ onClose, commands }: CommandPaletteProps) {
                 borderRadius='2xl'
                 overflow='hidden'
                 boxShadow='0 26px 60px rgba(0, 0, 0, 0.55)'
+                display='flex'
+                flexDirection='column'
                 onClick={(event) => event.stopPropagation()}
             >
                 <Input
@@ -152,7 +155,7 @@ export function CommandPalette({ onClose, commands }: CommandPaletteProps) {
                     _focusVisible={{ boxShadow: 'none' }}
                 />
 
-                <Stack gap={0} maxH='56vh' overflowY='auto' p={2}>
+                <Stack gap={0} flex='1' minH={0} overflowY='auto' p={2}>
                     {filteredCommands.length === 0 ? (
                         <Text px={4} py={4} color='var(--text-muted)'>
                             No matching commands.
@@ -179,10 +182,6 @@ export function CommandPalette({ onClose, commands }: CommandPaletteProps) {
                     )}
                 </Stack>
 
-                <Flex px={4} py={3} borderTop='1px solid' borderColor='var(--panel-border)' color='var(--text-muted)' fontSize='sm' justify='space-between'>
-                    <Text>Use arrows to move, enter to run</Text>
-                    <Text>Esc to close</Text>
-                </Flex>
             </Box>
         </Box>
     );

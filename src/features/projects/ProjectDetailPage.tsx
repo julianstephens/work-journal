@@ -20,6 +20,7 @@ import {
     useSensors,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
+import { keyframes } from '@emotion/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     ArrowDown,
@@ -37,11 +38,14 @@ import {
     Trash2,
     X,
 } from 'lucide-react';
-import { type ReactNode, useMemo, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ActionStatus } from '../../components/ui/ActionStatus';
+import type { ActionFeedback } from '../../lib/action-feedback';
+import { getActionErrorMessage } from '../../lib/action-feedback';
 import { queryKeys } from '../../lib/query-keys';
 import type { Task } from '../../types/pocketbase';
-import { createNote, deleteNote, listNotesForProject, updateNote } from '../notes/api';
+import { createNote, deleteNote, findNoteForTask, listNotesForProject, updateNote } from '../notes/api';
 import { createTask, deleteTask, listTasksForProject, updateTask } from '../tasks/api';
 import {
     buildTaskRows,
@@ -68,6 +72,21 @@ type PersistTreePayload = {
 };
 
 const EMPTY_TASKS: Task[] = [];
+const CREATED_OVERLAY_MS = 1200;
+const COMPLETED_OVERLAY_MS = 1200;
+
+const createdOverlayFade = keyframes`
+    0% { opacity: 0; }
+    14% { opacity: 1; }
+    86% { opacity: 1; }
+    100% { opacity: 0; }
+`;
+
+const createdBadgePop = keyframes`
+    0% { opacity: 0; transform: scale(0.82) translateY(4px); }
+    22% { opacity: 1; transform: scale(1) translateY(0); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
+`;
 
 type TaskActionMenuProps = {
     isOpen: boolean;
@@ -155,6 +174,7 @@ function DroppableTaskContainer({
             ref={setNodeRef}
             borderBottom='1px solid'
             borderColor='var(--panel-border)'
+            position='relative'
             py={3}
             pl={`${depth * 22 + 8}px`}
             pr={2}
@@ -177,11 +197,18 @@ function ProjectDetailPage() {
     const [draftNoteBody, setDraftNoteBody] = useState('');
     const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
     const [draftTaskTitle, setDraftTaskTitle] = useState('');
+    const [childTaskDialogParentId, setChildTaskDialogParentId] = useState<string | null>(null);
+    const [childTaskDialogTitle, setChildTaskDialogTitle] = useState('');
     const [activeDragId, setActiveDragId] = useState<string | null>(null);
     const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
     const [moveTargetId, setMoveTargetId] = useState('');
     const [menuTaskId, setMenuTaskId] = useState<string | null>(null);
     const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<string | null>(null);
+    const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
+    const [recentlyCreatedIds, setRecentlyCreatedIds] = useState<Record<string, true>>({});
+    const [recentlyCompletedIds, setRecentlyCompletedIds] = useState<Record<string, true>>({});
+    const createdTimersRef = useRef<Record<string, number>>({});
+    const completedTimersRef = useRef<Record<string, number>>({});
     const todayDate = useMemo(() => getLocalIsoDate(), []);
     const taskQueryKey = queryKeys.tasks.project(projectId ?? 'missing');
     const sensors = useSensors(useSensor(PointerSensor, {
@@ -189,6 +216,81 @@ function ProjectDetailPage() {
             distance: 8,
         },
     }));
+
+    useEffect(() => {
+        return () => {
+            Object.values(createdTimersRef.current).forEach((timer) => window.clearTimeout(timer));
+            Object.values(completedTimersRef.current).forEach((timer) => window.clearTimeout(timer));
+        };
+    }, []);
+
+    const markTaskCreated = (taskId: string) => {
+        setRecentlyCreatedIds((current) => ({ ...current, [taskId]: true }));
+
+        const existingTimer = createdTimersRef.current[taskId];
+        if (existingTimer) window.clearTimeout(existingTimer);
+
+        createdTimersRef.current[taskId] = window.setTimeout(() => {
+            setRecentlyCreatedIds((current) => {
+                if (!current[taskId]) return current;
+                const next = { ...current };
+                delete next[taskId];
+                return next;
+            });
+            delete createdTimersRef.current[taskId];
+        }, CREATED_OVERLAY_MS);
+    };
+
+    const markTaskCompleted = (taskId: string) => {
+        setRecentlyCompletedIds((current) => ({ ...current, [taskId]: true }));
+
+        const existingTimer = completedTimersRef.current[taskId];
+        if (existingTimer) window.clearTimeout(existingTimer);
+
+        completedTimersRef.current[taskId] = window.setTimeout(() => {
+            setRecentlyCompletedIds((current) => {
+                if (!current[taskId]) return current;
+                const next = { ...current };
+                delete next[taskId];
+                return next;
+            });
+            delete completedTimersRef.current[taskId];
+        }, COMPLETED_OVERLAY_MS);
+    };
+
+    const toggleTaskMutation = useMutation({
+        mutationFn: ({ taskId, checked }: { taskId: string; checked: boolean; }) => updateTask(taskId, {
+            completed: checked,
+            completed_at: checked ? new Date().toISOString() : null,
+        }),
+        onMutate: async ({ taskId, checked }) => {
+            await queryClient.cancelQueries({ queryKey: taskQueryKey });
+            const previousTasks = queryClient.getQueryData<Task[]>(taskQueryKey) ?? [];
+            queryClient.setQueryData(taskQueryKey, previousTasks.map((task) => task.id === taskId ? {
+                ...task,
+                completed: checked,
+                completed_at: checked ? new Date().toISOString() : null,
+            } : task));
+            return { previousTasks };
+        },
+        onSuccess: (_data, variables) => {
+            if (variables.checked) {
+                markTaskCompleted(variables.taskId);
+                return;
+            }
+
+            setFeedback({ tone: 'success', message: 'Task marked open.' });
+        },
+        onError: (error, _variables, context) => {
+            if (context?.previousTasks) {
+                queryClient.setQueryData(taskQueryKey, context.previousTasks);
+            }
+            setFeedback({ tone: 'error', message: getActionErrorMessage(error, 'Could not update task status.') });
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: taskQueryKey });
+        },
+    });
 
     const projectQuery = useQuery({
         queryKey: queryKeys.projects.detail(projectId ?? 'missing'),
@@ -227,9 +329,15 @@ function ProjectDetailPage() {
             parent: input.parent ?? null,
             position: input.position,
         }),
-        onSuccess: () => {
+        onSuccess: (task) => {
             setNewTaskTitle('');
+            setChildTaskDialogParentId(null);
+            setChildTaskDialogTitle('');
             queryClient.invalidateQueries({ queryKey: taskQueryKey });
+            markTaskCreated(task.id);
+        },
+        onError: (error) => {
+            setFeedback({ tone: 'error', message: getActionErrorMessage(error, 'Could not create task.') });
         },
     });
 
@@ -254,6 +362,10 @@ function ProjectDetailPage() {
             if (context?.previousTasks) {
                 queryClient.setQueryData(taskQueryKey, context.previousTasks);
             }
+            setFeedback({ tone: 'error', message: 'Could not move task. Try again.' });
+        },
+        onSuccess: () => {
+            setFeedback({ tone: 'success', message: 'Task moved.' });
         },
         onSettled: () => {
             queryClient.invalidateQueries({ queryKey: taskQueryKey });
@@ -264,6 +376,10 @@ function ProjectDetailPage() {
         mutationFn: ({ taskId, title }: { taskId: string; title: string; }) => updateTask(taskId, { title }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: taskQueryKey });
+            setFeedback({ tone: 'success', message: 'Task updated.' });
+        },
+        onError: (error) => {
+            setFeedback({ tone: 'error', message: getActionErrorMessage(error, 'Could not update task.') });
         },
     });
 
@@ -275,17 +391,34 @@ function ProjectDetailPage() {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: taskQueryKey });
+            queryClient.invalidateQueries({ queryKey: queryKeys.today.date(todayDate) });
+            setFeedback({ tone: 'success', message: 'Task deleted.' });
+        },
+        onError: (error) => {
+            setFeedback({ tone: 'error', message: getActionErrorMessage(error, 'Could not delete task.') });
         },
     });
 
     const addToTodayMutation = useMutation({
         mutationFn: (taskId: string) => addTaskToToday(todayDate, taskId),
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.today.date(todayDate) }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: queryKeys.today.date(todayDate) });
+            setFeedback({ tone: 'success', message: 'Added to My day.' });
+        },
+        onError: (error) => {
+            setFeedback({ tone: 'error', message: getActionErrorMessage(error, 'Could not add to My day.') });
+        },
     });
 
     const removeFromTodayMutation = useMutation({
         mutationFn: removeTaskFromToday,
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.today.date(todayDate) }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: queryKeys.today.date(todayDate) });
+            setFeedback({ tone: 'success', message: 'Removed from My day.' });
+        },
+        onError: (error) => {
+            setFeedback({ tone: 'error', message: getActionErrorMessage(error, 'Could not remove from My day.') });
+        },
     });
 
     const createNoteMutation = useMutation({
@@ -298,6 +431,10 @@ function ProjectDetailPage() {
             setNewNoteTitle('');
             setNewNoteBody('');
             queryClient.invalidateQueries({ queryKey: queryKeys.notes.project(projectId ?? 'missing') });
+            setFeedback({ tone: 'success', message: 'Note created.' });
+        },
+        onError: (error) => {
+            setFeedback({ tone: 'error', message: getActionErrorMessage(error, 'Could not create note.') });
         },
     });
 
@@ -314,6 +451,10 @@ function ProjectDetailPage() {
             setDraftNoteTitle('');
             setDraftNoteBody('');
             queryClient.invalidateQueries({ queryKey: queryKeys.notes.project(projectId ?? 'missing') });
+            setFeedback({ tone: 'success', message: 'Note updated.' });
+        },
+        onError: (error) => {
+            setFeedback({ tone: 'error', message: getActionErrorMessage(error, 'Could not update note.') });
         },
     });
 
@@ -321,8 +462,17 @@ function ProjectDetailPage() {
         mutationFn: (noteId: string) => deleteNote(noteId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.notes.project(projectId ?? 'missing') });
+            setFeedback({ tone: 'success', message: 'Note deleted.' });
+        },
+        onError: (error) => {
+            setFeedback({ tone: 'error', message: getActionErrorMessage(error, 'Could not delete note.') });
         },
     });
+
+    const isTaskMutationPending = createTaskMutation.isPending
+        || persistTreeMutation.isPending
+        || renameTaskMutation.isPending
+        || deleteTaskMutation.isPending;
 
     const project = projectQuery.data;
     const tasks = tasksQuery.data ?? EMPTY_TASKS;
@@ -331,8 +481,40 @@ function ProjectDetailPage() {
         if (!activeDragId) return null;
         return taskRows.find((row) => row.task.id === activeDragId) ?? null;
     }, [activeDragId, taskRows]);
+    const childTaskDialogParent = useMemo(() => {
+        if (!childTaskDialogParentId) return null;
+        return tasks.find((task) => task.id === childTaskDialogParentId) ?? null;
+    }, [childTaskDialogParentId, tasks]);
     const notes = notesQuery.data ?? [];
     const dailyTaskIds = useMemo(() => new Map((todayQuery.data ?? []).map((item) => [item.task.id, item.id])), [todayQuery.data]);
+
+    const openTaskNote = async (task: Task) => {
+        if (!projectId) return;
+
+        const existing = await findNoteForTask(projectId, task.id).catch(() => null);
+        if (existing) {
+            setEditingNoteId(existing.id);
+            setDraftNoteTitle(existing.title);
+            setDraftNoteBody(existing.body);
+            return;
+        }
+
+        const created = await createNote({
+            project: projectId,
+            task: task.id,
+            title: `${task.title} note`,
+            body: '',
+        });
+
+        queryClient.setQueryData(queryKeys.notes.project(projectId), (previous: typeof notes | undefined) => {
+            if (!previous) return [created];
+            return [created, ...previous.filter((note) => note.id !== created.id)];
+        });
+        queryClient.invalidateQueries({ queryKey: queryKeys.notes.project(projectId) });
+        setEditingNoteId(created.id);
+        setDraftNoteTitle(created.title);
+        setDraftNoteBody(created.body);
+    };
 
     const applyTaskTreeUpdate = (nextTasks: Task[]) => {
         const changes = derivePositionChanges(tasks, nextTasks);
@@ -355,6 +537,27 @@ function ProjectDetailPage() {
 
         setEditingTaskId(null);
         setDraftTaskTitle('');
+    };
+
+    const openChildTaskDialog = (parentId: string) => {
+        setChildTaskDialogParentId(parentId);
+        setChildTaskDialogTitle('');
+    };
+
+    const closeChildTaskDialog = () => {
+        setChildTaskDialogParentId(null);
+        setChildTaskDialogTitle('');
+    };
+
+    const submitChildTaskDialog = (event: FormEvent<HTMLElement>) => {
+        event.preventDefault();
+        if (!childTaskDialogParentId) return;
+
+        const title = childTaskDialogTitle.trim();
+        if (!title) return;
+
+        const position = taskRows.filter((row) => row.parentId === childTaskDialogParentId).length;
+        createTaskMutation.mutate({ title, parent: childTaskDialogParentId, position });
     };
 
     const handleDragStart = (event: DragStartEvent) => {
@@ -440,6 +643,8 @@ function ProjectDetailPage() {
                 </Flex>
             </Flex>
 
+            <ActionStatus feedback={feedback} onClear={() => setFeedback(null)} />
+
             <Text color='var(--text-soft)'>{subtitle}</Text>
 
             <Stack gap={10}>
@@ -482,14 +687,46 @@ function ProjectDetailPage() {
                                 {taskRows.map((row) => {
                                     const task = row.task;
                                     const isEditing = editingTaskId === task.id;
+                                    const showCreatedOverlay = Boolean(recentlyCreatedIds[task.id]);
+                                    const showCompletedOverlay = Boolean(recentlyCompletedIds[task.id]);
+                                    const overlayKind = showCreatedOverlay ? 'created' : showCompletedOverlay ? 'completed' : isEditing ? 'editing' : null;
                                     const siblingRows = taskRows.filter((item) => item.parentId === row.parentId);
                                     const siblingIndex = siblingRows.findIndex((item) => item.task.id === task.id);
-                                    const childCount = taskRows.filter((item) => item.parentId === task.id).length;
                                     const candidates = listMoveUnderCandidates(tasks, task.id);
                                     const subtreeIds = confirmDeleteTaskId === task.id ? collectSubtreeIds(tasks, task.id) : [];
 
                                     return (
                                         <DroppableTaskContainer key={task.id} taskId={task.id} depth={row.depth}>
+                                            {overlayKind ? (
+                                                <Flex
+                                                    position='absolute'
+                                                    inset='0'
+                                                    align='flex-start'
+                                                    justify='flex-start'
+                                                    p={2}
+                                                    pointerEvents='none'
+                                                    bg={overlayKind === 'completed' ? 'rgba(34, 197, 94, 0.10)' : overlayKind === 'editing' ? 'rgba(245, 158, 11, 0.10)' : 'rgba(53, 99, 233, 0.06)'}
+                                                    animation={`${createdOverlayFade} ${CREATED_OVERLAY_MS}ms ease-out forwards`}
+                                                    zIndex={2}
+                                                >
+                                                    <Flex
+                                                        align='center'
+                                                        gap={1.5}
+                                                        px={2.5}
+                                                        py={2.5}
+                                                        borderRadius='999px'
+                                                        border='1px solid'
+                                                        borderColor={overlayKind === 'completed' ? 'green.200' : overlayKind === 'editing' ? 'amber.200' : 'green.200'}
+                                                        bg='white'
+                                                        color={overlayKind === 'completed' ? 'green.700' : overlayKind === 'editing' ? 'amber.700' : 'green.700'}
+                                                        boxShadow='sm'
+                                                        animation={`${createdBadgePop} ${CREATED_OVERLAY_MS}ms ease-out forwards`}
+                                                        aria-label={overlayKind === 'editing' ? 'Task editing' : overlayKind === 'completed' ? 'Task completed' : 'Task created'}
+                                                    >
+                                                        {overlayKind === 'editing' ? <Edit2 size={12} /> : <Check size={12} />}
+                                                    </Flex>
+                                                </Flex>
+                                            ) : null}
                                             <Flex justify='space-between' gap={3} align='flex-start'>
                                                 <Box flex='1' minW='0'>
                                                     {isEditing ? (
@@ -516,11 +753,12 @@ function ProjectDetailPage() {
                                                     ) : (
                                                         <Text
                                                             fontWeight='medium'
+                                                            onClick={() => { void openTaskNote(task); }}
                                                             onDoubleClick={() => {
                                                                 setEditingTaskId(task.id);
                                                                 setDraftTaskTitle(task.title);
                                                             }}
-                                                            cursor='text'
+                                                            cursor='pointer'
                                                             truncate
                                                         >
                                                             {task.title}
@@ -529,6 +767,19 @@ function ProjectDetailPage() {
                                                     <Text color='var(--text-muted)' fontSize='sm'>
                                                         Status: {task.completed ? 'Complete' : 'Open'}
                                                     </Text>
+                                                    <Button
+                                                        mt={2}
+                                                        size='xs'
+                                                        variant='outline'
+                                                        bg='var(--panel-bg)'
+                                                        borderColor='var(--control-border)'
+                                                        color='var(--text-soft)'
+                                                        _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
+                                                        disabled={toggleTaskMutation.isPending && toggleTaskMutation.variables?.taskId === task.id}
+                                                        onClick={() => toggleTaskMutation.mutate({ taskId: task.id, checked: !task.completed })}
+                                                    >
+                                                        {task.completed ? 'Mark open' : 'Mark complete'}
+                                                    </Button>
 
                                                     {movingTaskId === task.id ? (
                                                         <Flex mt={2} gap={2} align='center' wrap='wrap'>
@@ -618,13 +869,9 @@ function ProjectDetailPage() {
                                                             borderColor='var(--control-border)'
                                                             color='var(--text-soft)'
                                                             _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
+                                                            disabled={isTaskMutationPending}
                                                             data-tooltip-content='Add child task'
-                                                            onClick={() => {
-                                                                const childTitle = window.prompt('Child task title');
-                                                                const title = childTitle?.trim();
-                                                                if (!title) return;
-                                                                createTaskMutation.mutate({ title, parent: task.id, position: childCount });
-                                                            }}
+                                                            onClick={() => openChildTaskDialog(task.id)}
                                                         >
                                                             <Plus size={12} />
                                                             <Box as='span' ml={1}>Child</Box>
@@ -636,6 +883,7 @@ function ProjectDetailPage() {
                                                             borderColor='var(--control-border)'
                                                             color='var(--text-soft)'
                                                             _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
+                                                            disabled={isTaskMutationPending}
                                                             data-tooltip-content={isEditing ? 'Save task title' : 'Edit task title'}
                                                             onClick={() => {
                                                                 if (isEditing) {
@@ -672,7 +920,7 @@ function ProjectDetailPage() {
                                                             borderColor='var(--control-border)'
                                                             color='var(--text-soft)'
                                                             _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
-                                                            disabled={siblingIndex <= 0}
+                                                            disabled={siblingIndex <= 0 || isTaskMutationPending}
                                                             data-tooltip-content='Move task up'
                                                             onClick={() => applyTaskTreeUpdate(moveTaskUp(tasks, task.id))}
                                                         >
@@ -685,7 +933,7 @@ function ProjectDetailPage() {
                                                             borderColor='var(--control-border)'
                                                             color='var(--text-soft)'
                                                             _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
-                                                            disabled={siblingIndex === -1 || siblingIndex >= siblingRows.length - 1}
+                                                            disabled={siblingIndex === -1 || siblingIndex >= siblingRows.length - 1 || isTaskMutationPending}
                                                             data-tooltip-content='Move task down'
                                                             onClick={() => applyTaskTreeUpdate(moveTaskDown(tasks, task.id))}
                                                         >
@@ -698,7 +946,7 @@ function ProjectDetailPage() {
                                                             borderColor='var(--control-border)'
                                                             color='var(--text-soft)'
                                                             _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
-                                                            disabled={taskRows.findIndex((item) => item.task.id === task.id) === 0}
+                                                            disabled={taskRows.findIndex((item) => item.task.id === task.id) === 0 || isTaskMutationPending}
                                                             data-tooltip-content='Indent task'
                                                             onClick={() => applyTaskTreeUpdate(indentTask(tasks, task.id))}
                                                         >
@@ -711,7 +959,7 @@ function ProjectDetailPage() {
                                                             borderColor='var(--control-border)'
                                                             color='var(--text-soft)'
                                                             _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
-                                                            disabled={!task.parent}
+                                                            disabled={!task.parent || isTaskMutationPending}
                                                             data-tooltip-content='Outdent task'
                                                             onClick={() => applyTaskTreeUpdate(outdentTask(tasks, task.id))}
                                                         >
@@ -724,6 +972,7 @@ function ProjectDetailPage() {
                                                             borderColor='var(--control-border)'
                                                             color='var(--text-soft)'
                                                             _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
+                                                            disabled={isTaskMutationPending}
                                                             data-tooltip-content='Move task under another task'
                                                             onClick={() => {
                                                                 setMovingTaskId(task.id);
@@ -739,6 +988,7 @@ function ProjectDetailPage() {
                                                             borderColor='var(--control-border)'
                                                             color='var(--text-soft)'
                                                             _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
+                                                            disabled={isTaskMutationPending}
                                                             data-tooltip-content='Open task menu'
                                                             onClick={() => setMenuTaskId(menuTaskId === task.id ? null : task.id)}
                                                         >
@@ -749,12 +999,7 @@ function ProjectDetailPage() {
                                                             <TaskActionMenu
                                                                 isOpen={menuTaskId === task.id}
                                                                 onClose={() => setMenuTaskId(null)}
-                                                                onAddChild={() => {
-                                                                    const childTitle = window.prompt('Child task title');
-                                                                    const title = childTitle?.trim();
-                                                                    if (!title) return;
-                                                                    createTaskMutation.mutate({ title, parent: task.id, position: childCount });
-                                                                }}
+                                                                onAddChild={() => openChildTaskDialog(task.id)}
                                                                 onStartRename={() => {
                                                                     setEditingTaskId(task.id);
                                                                     setDraftTaskTitle(task.title);
@@ -782,6 +1027,18 @@ function ProjectDetailPage() {
                                                         borderColor='var(--control-border)'
                                                         color='var(--text-soft)'
                                                         _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
+                                                        data-tooltip-content='Open task note'
+                                                        onClick={() => { void openTaskNote(task); }}
+                                                    >
+                                                        <FileText size={12} />
+                                                        <Box as='span' ml={1}>Note</Box>
+                                                    </Button>
+                                                    <Button
+                                                        size='xs'
+                                                        variant='outline'
+                                                        borderColor='var(--control-border)'
+                                                        color='var(--text-soft)'
+                                                        _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
                                                         data-tooltip-disabled='true'
                                                         loading={(addToTodayMutation.isPending && addToTodayMutation.variables === task.id) || (removeFromTodayMutation.isPending && removeFromTodayMutation.variables === dailyTaskIds.get(task.id))}
                                                         onClick={() => {
@@ -792,6 +1049,26 @@ function ProjectDetailPage() {
                                                     >
                                                         <CalendarPlus size={13} />
                                                         <Box as='span' ml={1}>{dailyTaskIds.has(task.id) ? 'Remove from My day' : 'My day'}</Box>
+                                                    </Button>
+                                                    <Button
+                                                        type='button'
+                                                        aria-label='Delete task'
+                                                        title='Delete task'
+                                                        size='xs'
+                                                        variant='outline'
+                                                        bg='var(--panel-bg)'
+                                                        borderColor='red.200'
+                                                        color='red.600'
+                                                        _hover={{ bg: 'red.50', color: 'red.700' }}
+                                                        onClick={() => deleteTaskMutation.mutate(subtreeIds)}
+                                                        loading={deleteTaskMutation.isPending}
+                                                        disabled={deleteTaskMutation.isPending}
+                                                        minW='28px'
+                                                        w='28px'
+                                                        h='28px'
+                                                        p={0}
+                                                    >
+                                                        <Trash2 size={12} />
                                                     </Button>
                                                 </Stack>
                                             </Flex>
@@ -961,6 +1238,82 @@ function ProjectDetailPage() {
                     </Stack>
                 </Box>
             </Stack>
+
+            {childTaskDialogParentId ? (
+                <Flex
+                    position='fixed'
+                    inset='0'
+                    zIndex={1300}
+                    align='center'
+                    justify='center'
+                    bg='rgba(0, 0, 0, 0.58)'
+                    p={5}
+                    onClick={closeChildTaskDialog}
+                >
+                    <Box
+                        as='form'
+                        w='full'
+                        maxW='420px'
+                        bg='var(--panel-bg)'
+                        border='1px solid'
+                        borderColor='var(--panel-border)'
+                        borderRadius='14px'
+                        boxShadow='0 22px 60px rgba(0, 0, 0, 0.34)'
+                        p={6}
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => {
+                            if (event.key === 'Escape') {
+                                event.preventDefault();
+                                closeChildTaskDialog();
+                            }
+                        }}
+                        onSubmit={submitChildTaskDialog}
+                    >
+                        <Heading as='h3' size='md' letterSpacing='-0.02em'>Add child task</Heading>
+                        {childTaskDialogParent ? (
+                            <Text mt={2} color='var(--text-soft)' fontSize='sm'>Parent: {childTaskDialogParent.title}</Text>
+                        ) : null}
+                        <Input
+                            autoFocus
+                            mt={4}
+                            value={childTaskDialogTitle}
+                            onChange={(event) => setChildTaskDialogTitle(event.target.value)}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Escape') {
+                                    event.preventDefault();
+                                    closeChildTaskDialog();
+                                }
+                            }}
+                            placeholder='Child task title'
+                            bg='var(--control-bg)'
+                            color='var(--control-text)'
+                            borderColor='var(--control-border)'
+                        />
+                        <Text mt={2} color='var(--text-muted)' fontSize='xs'>Press Enter to create or Escape to cancel.</Text>
+                        <Flex justify='flex-end' gap={2} mt={5}>
+                            <Button
+                                variant='outline'
+                                bg='var(--panel-bg)'
+                                borderColor='var(--control-border)'
+                                color='var(--text-soft)'
+                                _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
+                                onClick={closeChildTaskDialog}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type='submit'
+                                bg='var(--accent)'
+                                color='white'
+                                _hover={{ bg: 'var(--accent-soft)' }}
+                                loading={createTaskMutation.isPending}
+                            >
+                                Create
+                            </Button>
+                        </Flex>
+                    </Box>
+                </Flex>
+            ) : null}
         </Stack>
     );
 }

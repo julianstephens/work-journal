@@ -6,6 +6,8 @@ export type TaskRow = {
     parentId: string | null;
 };
 
+export type TaskSiblingComparator = (a: Task, b: Task) => number;
+
 function byPositionThenCreated(a: Task, b: Task): number {
     const aPosition = Number.isFinite(a.position) ? a.position : Number.MAX_SAFE_INTEGER;
     const bPosition = Number.isFinite(b.position) ? b.position : Number.MAX_SAFE_INTEGER;
@@ -20,7 +22,7 @@ function byPositionThenCreated(a: Task, b: Task): number {
     return a.id.localeCompare(b.id);
 }
 
-function buildChildrenMap(tasks: Task[]): Map<string | null, Task[]> {
+function buildChildrenMap(tasks: Task[], compareSiblings: TaskSiblingComparator = byPositionThenCreated): Map<string | null, Task[]> {
     const map = new Map<string | null, Task[]>();
 
     tasks.forEach((task) => {
@@ -31,7 +33,7 @@ function buildChildrenMap(tasks: Task[]): Map<string | null, Task[]> {
     });
 
     for (const items of map.values()) {
-        items.sort(byPositionThenCreated);
+        items.sort(compareSiblings);
     }
 
     return map;
@@ -40,15 +42,37 @@ function buildChildrenMap(tasks: Task[]): Map<string | null, Task[]> {
 function normalizeParent(tasks: Task[]): Task[] {
     const ids = new Set(tasks.map((task) => task.id));
     return tasks.map((task) => {
-        if (!task.parent) return task;
+        if (!task.parent || !task.parent.trim()) {
+            return { ...task, parent: null };
+        }
+
         if (ids.has(task.parent)) return task;
         return { ...task, parent: null };
     });
 }
 
-export function buildTaskRows(tasks: Task[]): TaskRow[] {
+function getTaskDepth(tasksById: Map<string, Task>, task: Task): number {
+    let depth = 0;
+    let cursor = task.parent ?? null;
+    const seen = new Set<string>();
+
+    while (cursor) {
+        depth += 1;
+        if (seen.has(cursor)) break;
+        seen.add(cursor);
+
+        const parent = tasksById.get(cursor);
+        if (!parent) break;
+        cursor = parent.parent ?? null;
+    }
+
+    return depth;
+}
+
+export function buildTaskRows(tasks: Task[], compareSiblings: TaskSiblingComparator = byPositionThenCreated): TaskRow[] {
+    const tasksById = new Map(tasks.map((task) => [task.id, task]));
     const normalized = normalizeParent(tasks);
-    const childrenMap = buildChildrenMap(normalized);
+    const childrenMap = buildChildrenMap(normalized, compareSiblings);
     const rows: TaskRow[] = [];
     const seen = new Set<string>();
 
@@ -60,13 +84,18 @@ export function buildTaskRows(tasks: Task[]): TaskRow[] {
         (childrenMap.get(task.id) ?? []).forEach((child) => walk(child, depth + 1));
     };
 
-    (childrenMap.get(null) ?? []).forEach((root) => walk(root, 0));
+    (childrenMap.get(null) ?? []).forEach((root) => walk(root, getTaskDepth(tasksById, root)));
+
+    normalized
+        .filter((task) => task.parent && !tasksById.has(task.parent))
+        .sort(compareSiblings)
+        .forEach((task) => walk(task, getTaskDepth(tasksById, task)));
 
     // Recover from malformed graphs where there are no true roots.
     if (seen.size < normalized.length) {
         normalized
             .filter((task) => !seen.has(task.id))
-            .sort(byPositionThenCreated)
+            .sort(compareSiblings)
             .forEach((task) => walk(task, 0));
     }
 

@@ -1,5 +1,5 @@
 import { COLLECTIONS, pb, requireAuthUserId } from '../../lib/pocketbase';
-import type { Task } from '../../types/pocketbase';
+import type { DailyTask, Task } from '../../types/pocketbase';
 
 export async function listTasksForProject(projectId: string): Promise<Task[]> {
     return pb
@@ -10,13 +10,16 @@ export async function listTasksForProject(projectId: string): Promise<Task[]> {
         }) as Promise<Task[]>;
 }
 
-export async function listInboxTasks(): Promise<Task[]> {
+export async function listAllTasks(): Promise<Task[]> {
     return pb
         .collection(COLLECTIONS.tasks)
         .getFullList({
-            filter: 'project = null',
             sort: 'position',
         }) as Promise<Task[]>;
+}
+
+export async function listInboxTasks(): Promise<Task[]> {
+    return listAllTasks();
 }
 
 export async function getTask(taskId: string): Promise<Task> {
@@ -47,7 +50,18 @@ export async function updateTask(
     return pb.collection(COLLECTIONS.tasks).update(taskId, input) as Promise<Task>;
 }
 
+async function deleteDailyTaskLinks(taskId: string): Promise<void> {
+    const links = (await pb.collection(COLLECTIONS.dailyTasks).getFullList({
+        filter: `task = "${taskId}"`,
+    })) as DailyTask[];
+
+    await Promise.all(
+        links.map((dailyTask) => pb.collection(COLLECTIONS.dailyTasks).delete(dailyTask.id)),
+    );
+}
+
 export async function deleteTask(taskId: string): Promise<void> {
+    await deleteDailyTaskLinks(taskId);
     await pb.collection(COLLECTIONS.tasks).delete(taskId);
 }
 

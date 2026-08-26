@@ -12,7 +12,7 @@ import {
     Text,
 } from '@chakra-ui/react';
 import { useQueryClient } from '@tanstack/react-query';
-import { CircleCheckBig, Command, FileText, FolderKanban, Home, Inbox, LogOut, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
+import { CircleCheckBig, CircleHelp, Command, FileText, FolderKanban, Home, Inbox, LogOut, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/auth-context';
@@ -20,9 +20,12 @@ import { createProject } from '../../features/projects/api';
 import { useProjects } from '../../features/projects/useProjects';
 import { createTask, listInboxTasks, listTasksForProject, toggleTaskCompletion } from '../../features/tasks/api';
 import { addTaskToToday, listToday } from '../../features/today/api';
+import { getActionErrorMessage } from '../../lib/action-feedback';
+import { pushAppToast } from '../../lib/app-toast';
 import { makeUserScopedStorageKey, readStoredBoolean, writeStoredBoolean } from '../../lib/local-storage';
 import { queryKeys } from '../../lib/query-keys';
 import { CommandPalette, type CommandPaletteItem } from '../command/CommandPalette';
+import { EmptyCtaCard, LoadingSkeletonListItems, LoadingSkeletonRows, SyncFailedBanner } from '../ui/AsyncState';
 
 const primaryNav = [
     { to: '/today', label: 'My day', icon: Home },
@@ -51,10 +54,17 @@ function AppShell() {
     const location = useLocation();
     const queryClient = useQueryClient();
     const { user, logout } = useAuth();
-    const { data: projects = [], isLoading } = useProjects();
+    const {
+        data: projects = [],
+        isLoading: isProjectsLoading,
+        isError: isProjectsError,
+        refetch: refetchProjects,
+    } = useProjects();
     const sidebarStorageKey = useMemo(() => makeUserScopedStorageKey('ui.sidebar.collapsed', user?.id), [user?.id]);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => readStoredBoolean(sidebarStorageKey, false));
     const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+    const [isShortcutHelpOpen, setIsShortcutHelpOpen] = useState(false);
+    const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' ? !navigator.onLine : false);
     const [dialog, setDialog] = useState<AppDialog | null>(null);
     const [dialogValue, setDialogValue] = useState('');
     const [dialogProjectId, setDialogProjectId] = useState('');
@@ -66,8 +76,16 @@ function AppShell() {
     }, [location.pathname]);
 
     const handleLogout = useCallback(async () => {
+        const isDesktop = typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches;
+        if (isDesktop) {
+            const confirmed = window.confirm('Log out of Work Journal on this device?');
+            if (!confirmed) {
+                return;
+            }
+        }
+
         await logout();
-        navigate('/login');
+        navigate('/login', { replace: true });
     }, [logout, navigate]);
 
     const toggleSidebar = useCallback(() => {
@@ -81,6 +99,21 @@ function AppShell() {
     useEffect(() => {
         writeStoredBoolean(sidebarStorageKey, isSidebarCollapsed);
     }, [isSidebarCollapsed, sidebarStorageKey]);
+
+    useEffect(() => {
+        const updateConnectionStatus = () => {
+            setIsOffline(typeof navigator !== 'undefined' ? !navigator.onLine : false);
+        };
+
+        updateConnectionStatus();
+        window.addEventListener('online', updateConnectionStatus);
+        window.addEventListener('offline', updateConnectionStatus);
+
+        return () => {
+            window.removeEventListener('online', updateConnectionStatus);
+            window.removeEventListener('offline', updateConnectionStatus);
+        };
+    }, []);
 
     const createTaskForCurrentView = useCallback(async (title?: string, projectId?: string | null, addToToday?: boolean) => {
         const value = title?.trim();
@@ -166,8 +199,18 @@ function AppShell() {
             return;
         }
 
-        await createProject({ name: value });
-        await queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
+        try {
+            await createProject({ name: value });
+            await queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
+            pushAppToast({ tone: 'success', title: 'Project created.' });
+        } catch (error) {
+            pushAppToast({
+                tone: 'error',
+                title: 'Could not create project.',
+                description: getActionErrorMessage(error, 'Try again.'),
+            });
+            throw error;
+        }
     }, [queryClient]);
 
     const closeDialog = useCallback(() => {
@@ -175,6 +218,18 @@ function AppShell() {
         setDialogValue('');
         setDialogProjectId('');
         setDialogAddToToday(false);
+    }, []);
+
+    const shortcutRows = useMemo(() => {
+        const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
+
+        return [
+            { keys: isMac ? '⌘K' : 'Ctrl+K', description: 'Open command palette' },
+            { keys: '↑ ↓', description: 'Move through results' },
+            { keys: 'Enter', description: 'Run the selected command' },
+            { keys: 'Esc', description: 'Close the palette' },
+            { keys: isMac ? '⌘⇧V' : 'Ctrl+Shift+V', description: 'Toggle note preview' },
+        ];
     }, []);
 
     const submitDialog = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
@@ -372,13 +427,21 @@ function AppShell() {
                         </Text>
 
                         <List.Root gap={2} as='ul' listStyle='none' m='0' p='0'>
-                            {isLoading ? (
+                            {isProjectsLoading ? (
+                                <LoadingSkeletonListItems count={4} itemHeight='32px' itemRadius='8px' />
+                            ) : isProjectsError ? (
                                 <ListItem>
-                                    <Text color='var(--text-muted)'>Loading projects…</Text>
+                                    <SyncFailedBanner compact message='Sync failed. Could not load projects.' onRetry={() => { void refetchProjects(); }} />
                                 </ListItem>
                             ) : projects.length === 0 ? (
                                 <ListItem>
-                                    <Text color='var(--text-muted)'>No projects yet</Text>
+                                    <EmptyCtaCard
+                                        compact
+                                        title='No projects yet'
+                                        description='Create your first project to organize notes and tasks.'
+                                        actionLabel='Create first project'
+                                        onAction={() => setDialog({ type: 'project' })}
+                                    />
                                 </ListItem>
                             ) : (
                                 projects.map((project, index) => (
@@ -406,7 +469,20 @@ function AppShell() {
                     </>
                 ) : (
                     <Stack gap={2}>
-                        {projects.slice(0, 5).map((project, index) => (
+                        {isProjectsLoading ? (
+                            <LoadingSkeletonRows count={4} itemHeight='30px' itemWidth='30px' itemRadius='full' align='center' />
+                        ) : isProjectsError ? (
+                            <Button
+                                variant='ghost'
+                                size='sm'
+                                aria-label='Retry loading projects'
+                                data-tooltip-content='Retry loading projects'
+                                _hover={{ bg: 'var(--panel-bg-soft)' }}
+                                onClick={() => { void refetchProjects(); }}
+                            >
+                                R
+                            </Button>
+                        ) : projects.slice(0, 5).map((project, index) => (
                             <Button
                                 key={project.id}
                                 variant='ghost'
@@ -438,15 +514,77 @@ function AppShell() {
                 </Box>
             </Box>
 
-            <Box flex='1' minW='0' px={{ base: 5, md: 10, xl: 14 }} py={{ base: 6, md: 10 }}>
-                <Outlet />
-            </Box>
+            <Flex flex='1' direction='column' minW='0'>
+                {isOffline ? (
+                    <Box bg='orange.500' color='white' px={4} py={2} textAlign='center' fontSize='xs' fontWeight='700' letterSpacing='0.08em' textTransform='uppercase'>
+                        Offline
+                    </Box>
+                ) : null}
+
+                {isProjectsError ? (
+                    <SyncFailedBanner variant='solid' compact message='Sync failed. Could not load projects.' onRetry={() => { void refetchProjects(); }} />
+                ) : null}
+
+                <Box flex='1' minW='0' px={{ base: 5, md: 10, xl: 14 }} py={{ base: 6, md: 10 }}>
+                    <Outlet />
+                </Box>
+            </Flex>
 
             {isCommandPaletteOpen ? (
                 <CommandPalette
                     onClose={() => setIsCommandPaletteOpen(false)}
                     commands={commands}
                 />
+            ) : null}
+
+            <IconButton
+                aria-label='Open keyboard shortcuts'
+                position='fixed'
+                right={6}
+                bottom={6}
+                zIndex={1400}
+                size='lg'
+                borderRadius='full'
+                bg='var(--accent)'
+                color='white'
+                boxShadow='0 16px 40px rgba(0, 0, 0, 0.28)'
+                _hover={{ bg: 'var(--accent-soft)' }}
+                onClick={() => setIsShortcutHelpOpen(true)}
+            >
+                <CircleHelp size={18} />
+            </IconButton>
+
+            {isShortcutHelpOpen ? (
+                <Flex position='fixed' inset='0' zIndex={1300} align='center' justify='center' bg='rgba(0, 0, 0, 0.58)' p={5} onClick={() => setIsShortcutHelpOpen(false)}>
+                    <Box
+                        w='full'
+                        maxW='420px'
+                        bg='var(--panel-bg)'
+                        border='1px solid'
+                        borderColor='var(--panel-border)'
+                        borderRadius='18px'
+                        boxShadow='0 22px 60px rgba(0, 0, 0, 0.34)'
+                        p={6}
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <Heading as='h2' size='md' letterSpacing='-0.02em' mb={4}>Keyboard shortcuts</Heading>
+                        <Stack gap={3}>
+                            {shortcutRows.map(({ keys, description }) => (
+                                <Flex key={`${keys}-${description}`} align='center' justify='space-between' gap={3} wrap='wrap'>
+                                    <Text as='kbd' border='1px solid' borderColor='var(--panel-border)' borderRadius='md' px={2} py={0.5} bg='var(--panel-bg-soft)' color='var(--app-text)' fontFamily='monospace' fontSize='xs' whiteSpace='nowrap'>
+                                        {keys}
+                                    </Text>
+                                    <Text flex='1' minW={0} ml='auto' color='var(--text-soft)' overflowWrap='anywhere'>{description}</Text>
+                                </Flex>
+                            ))}
+                        </Stack>
+                        <Flex justify='flex-end' mt={6}>
+                            <Button onClick={() => setIsShortcutHelpOpen(false)} variant='ghost' color='var(--text-soft)' _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}>
+                                Close
+                            </Button>
+                        </Flex>
+                    </Box>
+                </Flex>
             ) : null}
 
             {dialog ? (

@@ -45,6 +45,8 @@ type AuthContextValue = {
     user: AuthRecord | null;
     isAuthenticated: boolean;
     isLoading: boolean;
+    authRedirectReason: 'session-expired' | null;
+    clearAuthRedirectReason: () => void;
     login: (email: string, password: string, options?: { rememberMe?: boolean; }) => Promise<void>;
     register: (email: string, username: string, password: string, options?: { rememberMe?: boolean; }) => Promise<void>;
     logout: () => Promise<void>;
@@ -61,8 +63,16 @@ export function AuthProvider({ children }: { children: React.ReactNode; }) {
         return (pb.authStore.record as AuthRecord | null) ?? null;
     });
     const [isLoading, setIsLoading] = useState(true);
+    const [authRedirectReason, setAuthRedirectReason] = useState<'session-expired' | null>(null);
 
     useEffect(() => {
+        const clearSession = (reason: 'session-expired' | null = null): void => {
+            pb.authStore.clear();
+            setAuthSessionStartedAt(null);
+            setUser(null);
+            setAuthRedirectReason(reason);
+        };
+
         const clearExpiredSession = (): boolean => {
             if (!pb.authStore.isValid) {
                 return true;
@@ -80,9 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode; }) {
                 return true;
             }
 
-            pb.authStore.clear();
-            setAuthSessionStartedAt(null);
-            setUser(null);
+            clearSession('session-expired');
             return false;
         };
 
@@ -120,9 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode; }) {
                 pb.authStore.save(pb.authStore.token, pb.authStore.record);
                 syncUser();
             } catch {
-                pb.authStore.clear();
-                setAuthSessionStartedAt(null);
-                setUser(null);
+                clearSession('session-expired');
             }
         };
 
@@ -157,6 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode; }) {
             setAuthSessionStartedAt(Date.now());
             pb.authStore.save(pb.authStore.token, pb.authStore.record);
             setUser((pb.authStore.record as AuthRecord | null) ?? null);
+            setAuthRedirectReason(null);
         } catch (error) {
             throw sanitizeAuthError(error, 'login');
         } finally {
@@ -179,6 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode; }) {
             setAuthSessionStartedAt(Date.now());
             pb.authStore.save(pb.authStore.token, pb.authStore.record);
             setUser((pb.authStore.record as AuthRecord | null) ?? null);
+            setAuthRedirectReason(null);
         } catch (error) {
             throw sanitizeAuthError(error, 'register');
         } finally {
@@ -192,9 +200,14 @@ export function AuthProvider({ children }: { children: React.ReactNode; }) {
             pb.authStore.clear();
             setAuthSessionStartedAt(null);
             setUser(null);
+            setAuthRedirectReason(null);
         } finally {
             setIsLoading(false);
         }
+    };
+
+    const clearAuthRedirectReason = () => {
+        setAuthRedirectReason(null);
     };
 
     const value = useMemo<AuthContextValue>(
@@ -202,11 +215,13 @@ export function AuthProvider({ children }: { children: React.ReactNode; }) {
             user,
             isAuthenticated: pb.authStore.isValid && Boolean(user),
             isLoading,
+            authRedirectReason,
+            clearAuthRedirectReason,
             login,
             register,
             logout,
         }),
-        [user, isLoading],
+        [authRedirectReason, user, isLoading],
     );
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

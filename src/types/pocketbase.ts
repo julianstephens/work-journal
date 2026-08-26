@@ -26,6 +26,7 @@ export type Note = {
     id: string;
     user: string;
     project: string | null;
+    task: string | null;
     title: string;
     body: string;
     created: string;

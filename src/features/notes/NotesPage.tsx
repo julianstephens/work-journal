@@ -1,4 +1,4 @@
-import { Box, Button, Flex, Heading, Input, Stack, Text, Textarea } from '@chakra-ui/react';
+import { Box, Button, Flex, Heading, Input, Skeleton, Stack, Text, Textarea } from '@chakra-ui/react';
 import { createHighlighter } from '@tanstack/highlight/core';
 import { html } from '@tanstack/highlight/languages/html';
 import { js } from '@tanstack/highlight/languages/js';
@@ -19,6 +19,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, Eye, FilePlus2, FileText, Folder, FolderTree, PanelLeftClose, PanelLeftOpen, Pencil, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../app/auth-context';
+import { ActionStatus } from '../../components/ui/ActionStatus';
+import { EmptyCtaCard, LoadingSkeletonRows, SyncFailedBanner } from '../../components/ui/AsyncState';
+import type { ActionFeedback } from '../../lib/action-feedback';
+import { getActionErrorMessage } from '../../lib/action-feedback';
 import {
     makeUserScopedStorageKey,
     readStoredBoolean,
@@ -157,13 +161,16 @@ const noteMarkdownThemeCss = createThemeCss({
 function NotesPage() {
     const queryClient = useQueryClient();
     const { user } = useAuth();
-    const { data: projects = [] } = useProjects();
-    const { data: notes = [], isLoading } = useQuery({ queryKey: queryKeys.notes.all, queryFn: listNotes });
+    const projectsQuery = useProjects();
+    const projects = projectsQuery.data ?? [];
+    const notesQuery = useQuery({ queryKey: queryKeys.notes.all, queryFn: listNotes });
+    const notes = notesQuery.data ?? [];
     const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
     const [draftTitle, setDraftTitle] = useState('');
     const [draftBody, setDraftBody] = useState('');
     const [isDirty, setIsDirty] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
+    const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
     const [tab, setTab] = useState<WorkspaceTab>('edit');
     const explorerCollapsedStorageKey = useMemo(() => makeUserScopedStorageKey('ui.notes.explorer.collapsed', user?.id), [user?.id]);
     const explorerFoldersStorageKey = useMemo(() => makeUserScopedStorageKey('ui.notes.explorer.expandedFolders', user?.id), [user?.id]);
@@ -283,6 +290,10 @@ function NotesPage() {
                 });
             });
             setSaveError(null);
+            setFeedback({ tone: 'success', message: 'Note updated.' });
+        },
+        onError: (error) => {
+            setFeedback({ tone: 'error', message: getActionErrorMessage(error, 'Could not update note.') });
         },
     });
 
@@ -357,6 +368,10 @@ function NotesPage() {
             setTab('edit');
             queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
             if (note.project) queryClient.invalidateQueries({ queryKey: queryKeys.notes.project(note.project) });
+            setFeedback({ tone: 'success', message: 'Note created.' });
+        },
+        onError: (error) => {
+            setFeedback({ tone: 'error', message: getActionErrorMessage(error, 'Could not create note.') });
         },
     });
 
@@ -381,6 +396,10 @@ function NotesPage() {
                 queryClient.invalidateQueries({ queryKey: queryKeys.notes.project(deleted.project) });
             }
             queryClient.invalidateQueries({ queryKey: queryKeys.notes.all });
+            setFeedback({ tone: 'success', message: 'Note deleted.' });
+        },
+        onError: (error) => {
+            setFeedback({ tone: 'error', message: getActionErrorMessage(error, 'Could not delete note.') });
         },
     });
 
@@ -409,12 +428,26 @@ function NotesPage() {
         ?? readRecordField(selectedNote, 'updated_at');
     const createdLabel = formatRecordTimestamp(selectedCreatedRaw);
     const updatedLabel = formatRecordTimestamp(selectedUpdatedRaw);
+    const isInitialLoading = notesQuery.isLoading || projectsQuery.isLoading;
+    const isSyncError = notesQuery.isError || projectsQuery.isError;
+
+    const retrySync = () => {
+        void notesQuery.refetch();
+        void projectsQuery.refetch();
+    };
+
     return (
         <Stack gap={8} maxW='1200px' mx={{ xl: 'auto' }}>
             <Box>
                 <Heading as='h2' fontSize={{ base: '3xl', md: '4xl' }} lineHeight='1.05' letterSpacing='-0.04em'>Notes</Heading>
                 <Text color='var(--text-muted)' mt={2}>Browse notes by project and edit with markdown preview.</Text>
             </Box>
+
+            <ActionStatus feedback={feedback} onClear={() => setFeedback(null)} />
+
+            {isSyncError ? (
+                <SyncFailedBanner message='Sync failed. Could not load notes.' onRetry={retrySync} />
+            ) : null}
 
             <Flex direction={{ base: 'column', lg: 'row' }} gap={4} align='stretch'>
                 <Box
@@ -448,7 +481,9 @@ function NotesPage() {
                         </Button>
                     </Flex>
 
-                    {isTreeCollapsed ? null : (isLoading ? <Text color='var(--text-muted)'>Loading notes…</Text> : (
+                    {isTreeCollapsed ? null : (isInitialLoading ? (
+                        <LoadingSkeletonRows count={5} itemHeight='28px' itemRadius='7px' />
+                    ) : (
                         <Stack gap={4} maxH={{ base: 'none', lg: 'calc(100vh - 290px)' }} overflowY='auto' pr={1}>
                             {groupedNotes.map((group) => {
                                 const folderKey = group.projectId ?? 'uncategorized';
@@ -484,7 +519,7 @@ function NotesPage() {
 
                                         {isExpanded ? (
                                             group.notes.length === 0 ? (
-                                                <Text fontSize='sm' color='var(--text-muted)' pl={8} py={1.5}>No files</Text>
+                                                <Text fontSize='sm' color='var(--text-muted)' pl={8} py={1.5}>No notes yet</Text>
                                             ) : (
                                                 <Stack gap={0.5} pl={6} ml={2} mt={1} borderLeft='1px solid' borderColor='var(--panel-border)'>
                                                     {group.notes.map((note) => {
@@ -541,13 +576,21 @@ function NotesPage() {
 
                 <Box border='1px solid' borderColor='var(--control-border)' borderRadius='10px' bg='var(--panel-bg)' p={4} flex='1' minH='520px' minW='0' overflow='hidden'>
 
-                    {!selectedNote ? (
+                    {isInitialLoading ? (
+                        <Stack gap={3}>
+                            <Skeleton h='44px' borderRadius='8px' />
+                            <Skeleton h='20px' w='40%' borderRadius='6px' />
+                            <Skeleton h='380px' borderRadius='8px' />
+                        </Stack>
+                    ) : !selectedNote ? (
                         <Flex h='100%' align='center' justify='center' direction='column' gap={3} w='100%' maxW='900px' mx='auto' minW='0'>
-                            <Text fontWeight='600'>Select a note to start editing.</Text>
-                            <Button type='button' bg='var(--accent)' color='white' data-tooltip-disabled='true' _hover={{ bg: 'var(--accent-soft)' }} onClick={() => { void createFromTree(null); }}>
-                                <FilePlus2 size={14} />
-                                <Box as='span' ml={1.5}>Create note</Box>
-                            </Button>
+                            <EmptyCtaCard
+                                title='No notes yet'
+                                description='Create your first note to start writing.'
+                                actionLabel='Create first note'
+                                actionLoading={createMutation.isPending}
+                                onAction={() => { void createFromTree(null); }}
+                            />
                         </Flex>
                     ) : (
                         <Stack gap={4} h='100%' w='100%' maxW='900px' mx='auto' minW='0'>
