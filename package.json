@@ -7,6 +7,7 @@
     "dev": "pnpm --dir frontend run dev --host",
     "build": "pnpm --dir frontend run build",
     "lint": "pnpm --dir frontend run lint",
+    "seed:ui": "pnpm --dir frontend run seed:ui",
     "test": "echo \"No tests configured yet\" && exit 0"
   },
   "keywords": [

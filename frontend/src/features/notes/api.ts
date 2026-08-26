@@ -1,4 +1,4 @@
-import { COLLECTIONS, pb } from '../../lib/pocketbase';
+import { COLLECTIONS, pb, requireAuthUserId } from '../../lib/pocketbase';
 import type { Note } from '../../types/pocketbase';
 
 export async function listNotesForProject(projectId: string): Promise<Note[]> {
@@ -8,12 +8,17 @@ export async function listNotesForProject(projectId: string): Promise<Note[]> {
     }) as Promise<Note[]>;
 }
 
+export async function listNotes(): Promise<Note[]> {
+    return pb.collection(COLLECTIONS.notes).getFullList({ sort: '-updated' }) as Promise<Note[]>;
+}
+
 export async function getNote(noteId: string): Promise<Note> {
     return pb.collection(COLLECTIONS.notes).getOne(noteId) as Promise<Note>;
 }
 
-export async function createNote(input: { project: string; title: string; body: string; }): Promise<Note> {
+export async function createNote(input: { project?: string | null; title: string; body: string; }): Promise<Note> {
     return pb.collection(COLLECTIONS.notes).create({
+        user: requireAuthUserId(),
         ...input,
     }) as Promise<Note>;
 }

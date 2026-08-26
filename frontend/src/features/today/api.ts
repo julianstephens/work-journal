@@ -1,9 +1,23 @@
-import { COLLECTIONS, pb } from '../../lib/pocketbase';
+import { COLLECTIONS, pb, requireAuthUserId } from '../../lib/pocketbase';
 import type { DailyTask, DailyTaskWithTask, Task } from '../../types/pocketbase';
+
+function toPocketBaseDate(date: string): string {
+    return `${date} 00:00:00.000Z`;
+}
+
+function nextLocalDate(date: string): string {
+    const next = new Date(`${date}T12:00:00`);
+    next.setDate(next.getDate() + 1);
+    return next.toISOString().slice(0, 10);
+}
+
+function dateFilter(date: string): string {
+    return `date >= "${toPocketBaseDate(date)}" && date < "${toPocketBaseDate(nextLocalDate(date))}"`;
+}
 
 export async function listToday(date: string): Promise<DailyTaskWithTask[]> {
     const dailyRecords = (await pb.collection(COLLECTIONS.dailyTasks).getFullList({
-        filter: `date = "${date}"`,
+        filter: dateFilter(date),
         sort: 'position',
     })) as DailyTask[];
 
@@ -15,8 +29,17 @@ export async function listToday(date: string): Promise<DailyTaskWithTask[]> {
 }
 
 export async function addTaskToToday(date: string, taskId: string, position = 0): Promise<DailyTask> {
+    const existing = (await pb.collection(COLLECTIONS.dailyTasks).getFullList({
+        filter: `${dateFilter(date)} && task = "${taskId}"`,
+    })) as DailyTask[];
+
+    if (existing[0]) {
+        return existing[0];
+    }
+
     return pb.collection(COLLECTIONS.dailyTasks).create({
-        date,
+        user: requireAuthUserId(),
+        date: toPocketBaseDate(date),
         task: taskId,
         position,
     }) as Promise<DailyTask>;

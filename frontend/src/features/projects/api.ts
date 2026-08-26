@@ -1,4 +1,4 @@
-import { COLLECTIONS, pb } from '../../lib/pocketbase';
+import { COLLECTIONS, pb, requireAuthUserId } from '../../lib/pocketbase';
 import type { Project } from '../../types/pocketbase';
 
 export async function listProjects(): Promise<Project[]> {
@@ -12,6 +12,7 @@ export async function createProject(input: {
     position?: number;
 }): Promise<Project> {
     return pb.collection(COLLECTIONS.projects).create({
+        user: requireAuthUserId(),
         ...input,
         archived: input.archived ?? false,
         position: input.position ?? 0,

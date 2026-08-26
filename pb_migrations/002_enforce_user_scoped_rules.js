@@ -1,12 +1,16 @@
 migrate((app) => {
-  const authCollection = app.findCollectionByNameOrId('_pb_users_auth_')
+  const findCollection = (nameOrId) => {
+    try {
+      return app.findCollectionByNameOrId(nameOrId)
+    } catch (_) {
+      return null
+    }
+  }
 
-  const userField = () => new RelationField({
-    name: 'user',
-    required: true,
-    maxSelect: 1,
-    collectionId: authCollection.id,
-  })
+  const authCollection = findCollection('_pb_users_auth_')
+  if (!authCollection) {
+    throw new Error('Auth collection _pb_users_auth_ not found; PocketBase did not initialize correctly.')
+  }
 
   const relationField = (name, collectionId, required = false) => new RelationField({
     name,
@@ -15,7 +19,15 @@ migrate((app) => {
     collectionId,
   })
 
-  const applyRules = (collection, rule) => {
+  const ensureField = (collection, name, fieldFactory) => {
+    const hasField = collection.fields?.all?.some((field) => field.name === name)
+    if (!hasField) {
+      collection.fields.add(fieldFactory())
+    }
+  }
+
+  const applyUserScopedRules = (collection) => {
+    const rule = '@request.auth.id != "" && user = @request.auth.id'
     collection.listRule = rule
     collection.viewRule = rule
     collection.createRule = rule
@@ -23,52 +35,72 @@ migrate((app) => {
     collection.deleteRule = rule
   }
 
-  const userScopedRule = '@request.auth.id != "" && user = @request.auth.id'
+  const collectionNames = [
+    'work_journal_projects',
+    'work_journal_tasks',
+    'work_journal_notes',
+    'work_journal_daily_tasks',
+  ]
 
-  const projects = app.findCollectionByNameOrId('work_journal_projects')
-  projects.fields.add(
-    userField(),
-    new TextField({ name: 'name', required: true }),
-    new TextField({ name: 'description' }),
-    new BoolField({ name: 'archived', required: true, default: false }),
-    new NumberField({ name: 'position', required: true, default: 0 }),
-  )
-  applyRules(projects, userScopedRule)
-  app.save(projects)
+  collectionNames.forEach((name) => {
+    const collection = findCollection(name)
+    if (!collection) return
 
-  const tasks = app.findCollectionByNameOrId('work_journal_tasks')
-  tasks.fields.add(
-    userField(),
-    relationField('project', projects.id),
-    relationField('parent', tasks.id),
-    new TextField({ name: 'title', required: true }),
-    new BoolField({ name: 'completed', required: true, default: false }),
-    new NumberField({ name: 'position', required: true, default: 0 }),
-    new DateField({ name: 'completed_at' }),
-  )
-  applyRules(tasks, userScopedRule)
-  app.save(tasks)
+    ensureField(collection, 'user', () => new RelationField({
+      name: 'user',
+      required: true,
+      maxSelect: 1,
+      collectionId: authCollection.id,
+    }))
 
-  const notes = app.findCollectionByNameOrId('work_journal_notes')
-  notes.fields.add(
-    userField(),
-    relationField('project', projects.id, true),
-    new TextField({ name: 'title', required: true }),
-    new TextField({ name: 'body', required: true }),
-  )
-  applyRules(notes, userScopedRule)
-  app.save(notes)
+    if (name === 'work_journal_projects') {
+      ensureField(collection, 'name', () => new TextField({ name: 'name', required: true }))
+      ensureField(collection, 'description', () => new TextField({ name: 'description' }))
+      ensureField(collection, 'archived', () => new BoolField({ name: 'archived', required: false, default: false }))
+      ensureField(collection, 'position', () => new NumberField({ name: 'position', required: false, default: 0 }))
+    }
 
-  const dailyTasks = app.findCollectionByNameOrId('work_journal_daily_tasks')
-  dailyTasks.fields.add(
-    userField(),
-    new DateField({ name: 'date', required: true }),
-    relationField('task', tasks.id, true),
-    new NumberField({ name: 'position', required: true, default: 0 }),
-  )
-  dailyTasks.indexes = []
-  applyRules(dailyTasks, userScopedRule)
-  app.save(dailyTasks)
+    if (name === 'work_journal_tasks') {
+      const projectCollection = findCollection('work_journal_projects')
+      if (projectCollection) {
+        ensureField(collection, 'project', () => relationField('project', projectCollection.id))
+      }
+      if (!collection.fields?.all?.some((field) => field.name === 'parent')) {
+        collection.fields.add(new RelationField({
+          name: 'parent',
+          required: false,
+          collectionId: collection.id,
+          cascadeDelete: false,
+          maxSelect: 1,
+        }))
+      }
+      ensureField(collection, 'title', () => new TextField({ name: 'title', required: true }))
+      ensureField(collection, 'completed', () => new BoolField({ name: 'completed', required: false, default: false }))
+      ensureField(collection, 'position', () => new NumberField({ name: 'position', required: false, default: 0 }))
+      ensureField(collection, 'completed_at', () => new DateField({ name: 'completed_at' }))
+    }
+
+    if (name === 'work_journal_notes') {
+      const projectCollection = findCollection('work_journal_projects')
+      if (projectCollection) {
+        ensureField(collection, 'project', () => relationField('project', projectCollection.id, true))
+      }
+      ensureField(collection, 'title', () => new TextField({ name: 'title', required: true }))
+      ensureField(collection, 'body', () => new TextField({ name: 'body', required: true }))
+    }
+
+    if (name === 'work_journal_daily_tasks') {
+      ensureField(collection, 'date', () => new DateField({ name: 'date', required: true }))
+      const taskCollection = findCollection('work_journal_tasks')
+      if (taskCollection) {
+        ensureField(collection, 'task', () => relationField('task', taskCollection.id, true))
+      }
+      ensureField(collection, 'position', () => new NumberField({ name: 'position', required: false, default: 0 }))
+    }
+
+    applyUserScopedRules(collection)
+    app.save(collection)
+  })
 }, (app) => {
   const collectionNames = [
     'work_journal_projects',
@@ -77,29 +109,13 @@ migrate((app) => {
     'work_journal_daily_tasks',
   ]
 
-  const authOnlyRule = '@request.auth.id != ""'
-
   collectionNames.forEach((name) => {
-    const collection = app.findCollectionByNameOrId(name)
-    collection.indexes = []
-    collection.fields.removeByName('user')
-    collection.fields.removeByName('name')
-    collection.fields.removeByName('description')
-    collection.fields.removeByName('archived')
-    collection.fields.removeByName('position')
-    collection.fields.removeByName('project')
-    collection.fields.removeByName('parent')
-    collection.fields.removeByName('title')
-    collection.fields.removeByName('completed')
-    collection.fields.removeByName('completed_at')
-    collection.fields.removeByName('body')
-    collection.fields.removeByName('date')
-    collection.fields.removeByName('task')
-    collection.listRule = authOnlyRule
-    collection.viewRule = authOnlyRule
-    collection.createRule = authOnlyRule
-    collection.updateRule = authOnlyRule
-    collection.deleteRule = authOnlyRule
-    app.save(collection)
+    try {
+      const collection = app.findCollectionByNameOrId(name)
+      collection.indexes = []
+      app.save(collection)
+    } catch (_) {
+      // already removed
+    }
   })
 })

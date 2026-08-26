@@ -12,6 +12,7 @@ export const queryKeys = {
         date: (date: string) => ['today', date],
     },
     notes: {
+        all: ['notes', 'all'],
         project: (projectId: string) => ['notes', 'project', projectId],
         detail: (noteId: string) => ['notes', 'detail', noteId],
     },

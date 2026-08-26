@@ -1,5 +1,5 @@
-import { COLLECTIONS, pb } from '../../lib/pocketbase';
-import type { DailyTask, DailyTaskWithTask, Task } from '../../types/pocketbase';
+import { COLLECTIONS, pb, requireAuthUserId } from '../../lib/pocketbase';
+import type { Task } from '../../types/pocketbase';
 
 export async function listTasksForProject(projectId: string): Promise<Task[]> {
     return pb
@@ -31,6 +31,7 @@ export async function createTask(input: {
     completed?: boolean;
 }): Promise<Task> {
     return pb.collection(COLLECTIONS.tasks).create({
+        user: requireAuthUserId(),
         title: input.title,
         project: input.project ?? null,
         parent: input.parent ?? null,
@@ -66,30 +67,4 @@ export async function moveTask(taskId: string, input: { parentId?: string | null
         parent: input.parentId ?? null,
         position: input.position,
     });
-}
-
-export async function listTodayTasks(date: string): Promise<DailyTaskWithTask[]> {
-    const items = (await pb.collection(COLLECTIONS.dailyTasks).getFullList({
-        filter: `date = "${date}"`,
-        sort: 'position',
-    })) as DailyTask[];
-
-    const tasks = await Promise.all(items.map((item) => getTask(item.task)));
-
-    return items.map((item, index) => ({
-        ...item,
-        task: tasks[index],
-    }));
-}
-
-export async function addTaskToToday(taskId: string, date: string, position = 0): Promise<DailyTask> {
-    return pb.collection(COLLECTIONS.dailyTasks).create({
-        date,
-        task: taskId,
-        position,
-    }) as Promise<DailyTask>;
-}
-
-export async function removeTaskFromToday(dailyTaskId: string): Promise<void> {
-    await pb.collection(COLLECTIONS.dailyTasks).delete(dailyTaskId);
 }

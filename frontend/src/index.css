@@ -1,27 +1,48 @@
 :root {
-  color-scheme: light dark;
-  --app-bg: #f5f5f5;
-  --app-text: #1f2937;
+  color-scheme: light;
+  --app-bg: #ffffff;
+  --app-text: #1d2433;
   --panel-bg: #ffffff;
-  --panel-border: #e5e7eb;
-  --text-muted: #6b7280;
-  --text-soft: #4b5563;
-  --control-bg: #ffffff;
-  --control-text: #111827;
-  --control-border: #d1d5db;
+  --panel-bg-soft: #f7f9fc;
+  --panel-border: #e7ebf2;
+  --text-muted: #7c8595;
+  --text-soft: #5e6878;
+  --control-bg: #f6f8fb;
+  --control-text: #1d2433;
+  --control-border: #e3e8f0;
+  --accent: #5867b3;
+  --accent-soft: #4657a0;
+  --accent-muted: #edf1ff;
+  --sidebar-bg: #fafbfd;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --app-bg: #0a0a0a;
-    --app-text: #f3f4f6;
-    --panel-bg: #161616;
-    --panel-border: #2a2a2a;
-    --text-muted: #b3b3b3;
-    --text-soft: #d1d5db;
-    --control-bg: #1c1c1c;
-    --control-text: #f3f4f6;
-    --control-border: #3a3a3a;
+    color-scheme: dark;
+    --app-bg: #000000;
+    --app-text: #f5f7fb;
+    --panel-bg: #08090b;
+    --panel-bg-soft: #13161b;
+    --panel-border: #272b33;
+    --text-muted: #959dab;
+    --text-soft: #c6ccd7;
+    --control-bg: #12151a;
+    --control-text: #f5f7fb;
+    --control-border: #2a2f39;
+    --accent: #7c88d8;
+    --accent-soft: #a7aff4;
+    --accent-muted: #1a1f3d;
+    --sidebar-bg: #08090b;
+  }
+
+  /* Keep Chakra's neutral recipes legible when the OS selects dark mode. */
+  .chakra-button {
+    --colors-color-palette-fg: #f5f7fb !important;
+    --colors-color-palette-subtle: #1b212b !important;
+    --colors-color-palette-muted: #293343 !important;
+    --colors-color-palette-solid: #34445f !important;
+    --colors-color-palette-contrast: #f5f7fb !important;
+    --colors-color-palette-border: #3a465a !important;
   }
 }
 
@@ -29,7 +50,7 @@ html, body, #root {
   margin: 0;
   min-height: 100%;
   min-height: 100vh;
-  font-family: Inter, 'Segoe UI', sans-serif;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: var(--app-bg);
   color: var(--app-text);
 }
@@ -60,20 +81,14 @@ button {
   color: var(--app-text);
 }
 
-@media (prefers-color-scheme: dark) {
-  a:hover {
-    color: #ffffff;
-  }
+::selection {
+  background: var(--accent-muted);
+  color: var(--app-text);
+}
 
-  button:hover {
-    background: #2a2a2a !important;
-    color: #f3f4f6 !important;
-    border-color: #4a4a4a !important;
-  }
-
-  button:disabled:hover {
-    background: inherit !important;
-    color: inherit !important;
-    border-color: inherit !important;
-  }
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 2px;
 }

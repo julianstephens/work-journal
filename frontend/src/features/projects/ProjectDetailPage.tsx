@@ -4,19 +4,24 @@ import {
     Flex,
     Heading,
     Input,
-    SimpleGrid,
     Stack,
     Text,
     Textarea,
 } from '@chakra-ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, FileText, Plus, Save, Trash2 } from 'lucide-react';
+import { ArrowLeft, CalendarPlus, FileText, Plus, Save, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { queryKeys } from '../../lib/query-keys';
 import { createNote, deleteNote, listNotesForProject, updateNote } from '../notes/api';
 import { createTask, listTasksForProject } from '../tasks/api';
 import { listProjects } from './api';
+import { addTaskToToday, listToday, removeTaskFromToday } from '../today/api';
+
+function getLocalIsoDate(): string {
+    const now = new Date();
+    return `${now.getFullYear()}-${`${now.getMonth() + 1}`.padStart(2, '0')}-${`${now.getDate()}`.padStart(2, '0')}`;
+}
 
 function ProjectDetailPage() {
     const navigate = useNavigate();
@@ -28,6 +33,7 @@ function ProjectDetailPage() {
     const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
     const [draftNoteTitle, setDraftNoteTitle] = useState('');
     const [draftNoteBody, setDraftNoteBody] = useState('');
+    const todayDate = useMemo(() => getLocalIsoDate(), []);
 
     const projectQuery = useQuery({
         queryKey: queryKeys.projects.detail(projectId ?? 'missing'),
@@ -54,12 +60,27 @@ function ProjectDetailPage() {
         enabled: Boolean(projectId),
     });
 
+    const todayQuery = useQuery({
+        queryKey: queryKeys.today.date(todayDate),
+        queryFn: () => listToday(todayDate),
+    });
+
     const createTaskMutation = useMutation({
         mutationFn: (title: string) => createTask({ title, project: projectId ?? null }),
         onSuccess: () => {
             setNewTaskTitle('');
             queryClient.invalidateQueries({ queryKey: queryKeys.tasks.project(projectId ?? 'missing') });
         },
+    });
+
+    const addToTodayMutation = useMutation({
+        mutationFn: (taskId: string) => addTaskToToday(todayDate, taskId),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.today.date(todayDate) }),
+    });
+
+    const removeFromTodayMutation = useMutation({
+        mutationFn: removeTaskFromToday,
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.today.date(todayDate) }),
     });
 
     const createNoteMutation = useMutation({
@@ -101,6 +122,7 @@ function ProjectDetailPage() {
     const project = projectQuery.data;
     const tasks = tasksQuery.data ?? [];
     const notes = notesQuery.data ?? [];
+    const dailyTaskIds = useMemo(() => new Map((todayQuery.data ?? []).map((item) => [item.task.id, item.id])), [todayQuery.data]);
 
     const subtitle = useMemo(() => {
         if (!project) return 'Loading project…';
@@ -125,10 +147,19 @@ function ProjectDetailPage() {
     }
 
     return (
-        <Stack gap={6} maxW='1100px'>
+        <Stack gap={8} maxW='880px' mx={{ xl: 'auto' }}>
             <Flex align='center' justify='space-between' gap={4}>
                 <Flex align='center' gap={3}>
-                    <Button variant='ghost' colorScheme='gray' onClick={() => navigate('/projects')} aria-label='Back to projects'>
+                    <Button
+                        variant='outline'
+                        bg='var(--panel-bg)'
+                        borderColor='var(--control-border)'
+                        color='var(--app-text)'
+                        _hover={{ bg: 'var(--panel-bg-soft)', borderColor: 'var(--text-muted)' }}
+                        borderRadius='8px'
+                        onClick={() => navigate('/projects')}
+                        aria-label='Back to projects'
+                    >
                         <ArrowLeft size={16} />
                     </Button>
                     <Box>
@@ -140,9 +171,12 @@ function ProjectDetailPage() {
 
             <Text color='var(--text-soft)'>{subtitle}</Text>
 
-            <SimpleGrid columns={{ base: 1, xl: 2 }} gap={6}>
-                <Box bg='var(--panel-bg)' border='1px solid' borderColor='var(--panel-border)' borderRadius='md' p={5}>
-                    <Heading as='h3' size='md' mb={4}>Tasks</Heading>
+            <Stack gap={10}>
+                <Box>
+                    <Flex align='center' justify='space-between' mb={4}>
+                        <Heading as='h3' size='md'>Tasks</Heading>
+                        <Text fontSize='sm' color='var(--text-muted)'>{tasks.length} total</Text>
+                    </Flex>
 
                     <Flex gap={2} mb={4}>
                         <Input
@@ -154,8 +188,9 @@ function ProjectDetailPage() {
                             borderColor='var(--control-border)'
                         />
                         <Button
-                            variant='outline'
-                            colorScheme='gray'
+                            bg='var(--accent)'
+                            color='white'
+                            _hover={{ bg: 'var(--accent-soft)' }}
                             onClick={() => {
                                 const title = newTaskTitle.trim();
                                 if (!title) return;
@@ -168,24 +203,44 @@ function ProjectDetailPage() {
                         </Button>
                     </Flex>
 
-                    <Stack gap={2}>
+                    <Stack gap={0} maxH={{ base: 'none', xl: 'calc(100vh - 365px)' }} overflowY='auto' pr={1} borderTop='1px solid' borderColor='var(--panel-border)'>
                         {tasks.length === 0 ? (
                             <Text color='var(--text-muted)'>No tasks in this project yet.</Text>
                         ) : (
                             tasks.map((task) => (
-                                <Box key={task.id} border='1px solid' borderColor='var(--panel-border)' borderRadius='md' p={3}>
-                                    <Text fontWeight='medium'>{task.title}</Text>
-                                    <Text color='var(--text-muted)' fontSize='sm'>Status: {task.completed ? 'Complete' : 'Open'}</Text>
+                                <Box key={task.id} borderBottom='1px solid' borderColor='var(--panel-border)' py={3} px={2}>
+                                    <Flex justify='space-between' gap={3} align='center'>
+                                        <Box>
+                                            <Text fontWeight='medium'>{task.title}</Text>
+                                            <Text color='var(--text-muted)' fontSize='sm'>Status: {task.completed ? 'Complete' : 'Open'}</Text>
+                                        </Box>
+                                        <Button
+                                            size='xs'
+                                            variant='outline'
+                                            borderColor='var(--control-border)'
+                                            color='var(--text-soft)'
+                                            _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
+                                            loading={(addToTodayMutation.isPending && addToTodayMutation.variables === task.id) || (removeFromTodayMutation.isPending && removeFromTodayMutation.variables === dailyTaskIds.get(task.id))}
+                                            onClick={() => {
+                                                const dailyTaskId = dailyTaskIds.get(task.id);
+                                                if (dailyTaskId) removeFromTodayMutation.mutate(dailyTaskId);
+                                                else addToTodayMutation.mutate(task.id);
+                                            }}
+                                        >
+                                            <CalendarPlus size={13} />
+                                            <Box as='span' ml={1}>{dailyTaskIds.has(task.id) ? 'Remove from My day' : 'My day'}</Box>
+                                        </Button>
+                                    </Flex>
                                 </Box>
                             ))
                         )}
                     </Stack>
                 </Box>
 
-                <Box bg='var(--panel-bg)' border='1px solid' borderColor='var(--panel-border)' borderRadius='md' p={5}>
+                <Box borderTop='1px solid' borderColor='var(--panel-border)' pt={8}>
                     <Heading as='h3' size='md' mb={4}>Notes</Heading>
 
-                    <Stack gap={4}>
+                    <Stack gap={4} maxH={{ base: 'none', xl: 'calc(100vh - 285px)' }} overflowY='auto' pr={1}>
                         {notes.length === 0 ? (
                             <Text color='var(--text-muted)'>No notes yet for this project.</Text>
                         ) : (
@@ -215,8 +270,9 @@ function ProjectDetailPage() {
                                                 />
                                                 <Flex gap={2}>
                                                     <Button
-                                                        variant='solid'
-                                                        colorScheme='gray'
+                                                        bg='var(--accent)'
+                                                        color='white'
+                                                        _hover={{ bg: 'var(--accent-soft)' }}
                                                         onClick={() => updateNoteMutation.mutate()}
                                                         loading={updateNoteMutation.isPending}
                                                     >
@@ -268,7 +324,7 @@ function ProjectDetailPage() {
                             })
                         )}
 
-                        <Box borderTop='1px solid' borderColor='var(--panel-border)' pt={4}>
+                        <Box borderTop='1px solid' borderColor='var(--panel-border)' pt={4} position={{ xl: 'sticky' }} bottom={{ xl: '0' }} bg='var(--app-bg)' pb={1}>
                             <Flex align='center' gap={2} mb={3}>
                                 <FileText size={16} />
                                 <Text fontWeight='semibold'>New note</Text>
@@ -293,8 +349,9 @@ function ProjectDetailPage() {
                                     borderColor='var(--control-border)'
                                 />
                                 <Button
-                                    variant='outline'
-                                    colorScheme='gray'
+                                    bg='var(--accent)'
+                                    color='white'
+                                    _hover={{ bg: 'var(--accent-soft)' }}
                                     onClick={() => {
                                         const title = newNoteTitle.trim();
                                         const body = newNoteBody.trim();
@@ -310,7 +367,7 @@ function ProjectDetailPage() {
                         </Box>
                     </Stack>
                 </Box>
-            </SimpleGrid>
+            </Stack>
         </Stack>
     );
 }

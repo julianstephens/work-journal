@@ -40,6 +40,20 @@ pnpm dev
 pnpm build
 ```
 
+## Seed UI demo data
+
+To quickly populate several projects and tasks for layout work:
+
+```bash
+PB_EMAIL=you@example.com PB_PASSWORD=your-password pnpm seed:ui
+```
+
+Optional variables:
+
+- `PB_URL` (default: `http://127.0.0.1:8090`)
+
+The script removes prior records created by the same seed (`UI Seed - ...` projects and `[seed-ui] ...` tasks) and recreates a fresh dataset.
+
 ## PocketBase collections
 
 Custom collection names use the `work_journal_` prefix:

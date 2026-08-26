@@ -1,15 +1,23 @@
 import { Box, Button, Flex, Heading, Input, List, Stack, Text } from '@chakra-ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, Plus } from 'lucide-react';
+import { Check, Plus, Sparkles } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { queryKeys } from '../../lib/query-keys';
-import { createTask, removeTaskFromToday, toggleTaskCompletion } from '../tasks/api';
-import { addTaskToToday, listToday } from './api';
+import { createTask, toggleTaskCompletion } from '../tasks/api';
+import { addTaskToToday, listToday, removeTaskFromToday } from './api';
+
+function getLocalIsoDate(): string {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = `${now.getMonth() + 1}`.padStart(2, '0');
+    const day = `${now.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
 
 function TodayPage() {
     const queryClient = useQueryClient();
     const [quickAdd, setQuickAdd] = useState('');
-    const todayDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
+    const todayDate = useMemo(() => getLocalIsoDate(), []);
 
     const { data: todayTasks = [], isLoading } = useQuery({
         queryKey: queryKeys.today.date(todayDate),
@@ -51,45 +59,77 @@ function TodayPage() {
     };
 
     return (
-        <Stack gap={6} maxW='980px'>
-            <Flex align='center' justify='space-between'>
+        <Stack gap={8} maxW='880px' mx={{ xl: 'auto' }}>
+            <Flex align='center' justify='space-between' gap={4}>
                 <Box>
-                    <Text color='var(--text-muted)' fontSize='sm'>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</Text>
-                    <Heading as='h2' size='lg'>Today</Heading>
+                    <Heading as='h2' fontSize={{ base: '3xl', md: '4xl' }} lineHeight='1.05' letterSpacing='-0.04em'>My day</Heading>
                 </Box>
-                <Button variant='outline' colorScheme='gray'>
+                <Box>
+                    <Text color='var(--text-muted)' mt={2} fontSize='xl'>{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</Text>
+                </Box>
+                {/* <Button variant='outline' bg='var(--panel-bg)' borderColor='var(--control-border)' color='var(--app-text)' _hover={{ bg: 'var(--panel-bg-soft)', borderColor: 'var(--text-muted)' }} borderRadius='8px'>
                     <CalendarDays size={16} />
                     <Box as='span' ml={2}>This week</Box>
-                </Button>
+                </Button> */}
             </Flex>
 
-            <Box bg='var(--panel-bg)' border='1px solid' borderColor='var(--panel-border)' borderRadius='md' p={5}>
+            <form onSubmit={handleSubmit}>
+                <Flex align='center' gap={3} border='1px solid' borderColor='var(--control-border)' borderRadius='10px' px={3} py={2} bg='var(--panel-bg)'>
+                    <Plus size={19} color='var(--accent)' />
+                    <Input
+                        value={quickAdd}
+                        onChange={(event) => setQuickAdd(event.target.value)}
+                        placeholder='Add a task to My day'
+                        flex='1'
+                        border='none'
+                        _focus={{ boxShadow: 'none' }}
+                        bg='transparent'
+                        color='var(--control-text)'
+                        borderColor='var(--control-border)'
+                    />
+                    <Button type='submit' size='sm' bg='var(--accent)' color='white' _hover={{ bg: 'var(--accent-soft)' }} borderRadius='7px' loading={quickAddMutation.isPending}>
+                        Add task
+                    </Button>
+                </Flex>
+            </form>
+
+            <Box>
+                <Flex align='center' gap={2} mb={3}>
+                    <Sparkles size={16} color='var(--accent)' />
+                    <Text fontSize='sm' fontWeight='700' color='var(--text-soft)'>FOCUS FOR TODAY</Text>
+                    {!isLoading && todayTasks.length > 0 ? <Text fontSize='sm' color='var(--text-muted)'>· {todayTasks.filter(({ task }) => !task.completed).length} remaining</Text> : null}
+                </Flex>
                 {isLoading ? (
                     <Text color='var(--text-muted)'>Loading today…</Text>
                 ) : todayTasks.length === 0 ? (
-                    <Text color='var(--text-muted)'>No tasks scheduled for today yet.</Text>
+                    <Box border='1px dashed' borderColor='var(--control-border)' borderRadius='10px' p={8} textAlign='center'>
+                        <Text fontWeight='600'>A clear day ahead.</Text>
+                        <Text color='var(--text-muted)' mt={1}>Add a task above to start your list.</Text>
+                    </Box>
                 ) : (
-                    <List.Root as='ul' gap={3} listStyle='none' m='0' p='0'>
+                    <List.Root as='ul' gap={0} listStyle='none' m='0' p='0' borderTop='1px solid' borderColor='var(--panel-border)' maxH={{ base: 'none', md: 'calc(100vh - 350px)' }} overflowY='auto' pr={1}>
                         {todayTasks.map((item) => (
-                            <List.Item key={item.id}>
-                                <Flex align='center' gap={3} py={2}>
+                            <List.Item key={item.id} borderBottom='1px solid' borderColor='var(--panel-border)'>
+                                <Flex align='center' gap={3} py={4} px={2} _hover={{ bg: 'var(--panel-bg-soft)' }}>
                                     <Button
                                         type='button'
                                         aria-label={item.task.completed ? 'Mark as not done' : 'Mark as done'}
                                         onClick={() => toggleMutation.mutate({ taskId: item.task.id, checked: !item.task.completed })}
-                                        variant={item.task.completed ? 'solid' : 'outline'}
+                                        variant='outline'
                                         size='sm'
-                                        colorScheme='gray'
-                                        minW='14px'
-                                        w='14px'
-                                        h='14px'
+                                        color={item.task.completed ? 'white' : 'var(--text-muted)'}
+                                        bg={item.task.completed ? 'var(--accent)' : 'transparent'}
+                                        borderColor={item.task.completed ? 'var(--accent)' : 'var(--text-muted)'}
+                                        minW='20px'
+                                        w='20px'
+                                        h='20px'
                                         p={0}
-                                        borderRadius='sm'
-                                    />
+                                        borderRadius='6px'
+                                    >{item.task.completed ? <Check size={14} /> : null}</Button>
                                     <Text fontSize='md' textDecoration={item.task.completed ? 'line-through' : 'none'} color={item.task.completed ? 'var(--text-muted)' : 'var(--app-text)'} flex='1'>
                                         {item.task.title}
                                     </Text>
-                                    <Button type='button' size='xs' variant='ghost' colorScheme='gray' onClick={() => removeMutation.mutate(item.id)}>
+                                    <Button type='button' size='xs' variant='ghost' color='var(--text-muted)' onClick={() => removeMutation.mutate(item.id)}>
                                         Remove
                                     </Button>
                                 </Flex>
@@ -99,26 +139,6 @@ function TodayPage() {
                 )}
             </Box>
 
-            <Box borderTop='1px solid' borderColor='var(--panel-border)' />
-
-            <form onSubmit={handleSubmit}>
-                <Flex align='center' justify='space-between' gap={3}>
-                    <Text fontSize='sm' color='var(--text-muted)'>Quick capture</Text>
-                    <Input
-                        value={quickAdd}
-                        onChange={(event) => setQuickAdd(event.target.value)}
-                        placeholder='Add task for today'
-                        w='320px'
-                        bg='var(--control-bg)'
-                        color='var(--control-text)'
-                        borderColor='var(--control-border)'
-                    />
-                    <Button type='submit' size='sm' variant='ghost' colorScheme='gray' loading={quickAddMutation.isPending}>
-                        <Plus size={14} />
-                        <Box as='span' ml={2}>Add task</Box>
-                    </Button>
-                </Flex>
-            </form>
         </Stack>
     );
 }
