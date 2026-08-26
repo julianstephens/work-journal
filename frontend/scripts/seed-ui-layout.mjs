@@ -26,56 +26,159 @@ const projectsToSeed = [
   {
     name: `${SEED_PROJECT_PREFIX}Platform Revamp`,
     description: 'Visual hierarchy, cards, and spacing experiments for the main platform pages.',
-    tasks: [
-      'Map current information architecture',
-      'Explore dashboard density options',
-      'Refine card component tokens',
-      'Build alternate sidebar patterns',
-      'Create typography scale samples',
+    taskTree: [
+      {
+        title: 'Map current information architecture',
+        children: [
+          {
+            title: 'Inventory nav entry points',
+            children: [
+              { title: 'Compare desktop vs mobile paths' },
+              { title: 'Flag redundant routes' },
+            ],
+          },
+          { title: 'Document page ownership matrix' },
+        ],
+      },
+      {
+        title: 'Explore dashboard density options',
+        children: [
+          { title: 'Prototype compact mode' },
+          { title: 'Prototype readable mode' },
+        ],
+      },
+      {
+        title: 'Refine card component tokens',
+        children: [
+          {
+            title: 'Align elevation tokens',
+            children: [
+              { title: 'Calibrate hover shadow steps' },
+            ],
+          },
+          { title: 'Normalize spacing scale usage' },
+        ],
+      },
+      { title: 'Build alternate sidebar patterns' },
+      { title: 'Create typography scale samples' },
     ],
   },
   {
     name: `${SEED_PROJECT_PREFIX}Mobile UX Polish`,
     description: 'Mobile-first task flows, navigation behavior, and list interaction polish.',
-    tasks: [
-      'Audit gesture interactions',
-      'Prototype compact nav patterns',
-      'Tune touch target sizes',
-      'Test keyboard + input states',
-      'Draft responsive breakpoints',
+    taskTree: [
+      {
+        title: 'Audit gesture interactions',
+        children: [
+          { title: 'List gesture conflicts by screen' },
+          {
+            title: 'Trace swipe failures',
+            children: [
+              { title: 'Capture repro videos' },
+              { title: 'Attach expected behavior notes' },
+            ],
+          },
+        ],
+      },
+      {
+        title: 'Prototype compact nav patterns',
+        children: [
+          { title: 'Bottom nav with overflow tray' },
+          { title: 'Floating action rail concept' },
+        ],
+      },
+      { title: 'Tune touch target sizes' },
+      { title: 'Test keyboard + input states' },
+      {
+        title: 'Draft responsive breakpoints',
+        children: [
+          { title: 'Validate 360/390/414 layouts' },
+        ],
+      },
     ],
   },
   {
     name: `${SEED_PROJECT_PREFIX}Design System Docs`,
     description: 'Foundational docs and examples for reusable components and patterns.',
-    tasks: [
-      'Document button variants',
-      'Add form field guidance',
-      'Write color usage rules',
-      'Capture empty state examples',
-      'Draft component naming conventions',
+    taskTree: [
+      {
+        title: 'Document button variants',
+        children: [
+          { title: 'Primary/secondary usage table' },
+          { title: 'Disabled/loading states' },
+        ],
+      },
+      {
+        title: 'Add form field guidance',
+        children: [
+          {
+            title: 'Validation message patterns',
+            children: [
+              { title: 'Error tone examples' },
+              { title: 'Success microcopy examples' },
+            ],
+          },
+        ],
+      },
+      { title: 'Write color usage rules' },
+      { title: 'Capture empty state examples' },
+      { title: 'Draft component naming conventions' },
     ],
   },
   {
     name: `${SEED_PROJECT_PREFIX}Analytics Workspace`,
     description: 'Chart layout exploration and content prioritization for analytics screens.',
-    tasks: [
-      'Design metric strip variants',
-      'Prototype table + chart split view',
-      'Evaluate chart legends and labels',
-      'Define alert and threshold styles',
-      'Validate trendline readability',
+    taskTree: [
+      {
+        title: 'Design metric strip variants',
+        children: [
+          { title: 'Compact KPI cards' },
+          { title: 'Narrative KPI cards' },
+        ],
+      },
+      {
+        title: 'Prototype table + chart split view',
+        children: [
+          {
+            title: 'Resizable panes interaction',
+            children: [
+              { title: 'Persist user pane ratio' },
+            ],
+          },
+          { title: 'Cross-highlight rows from chart' },
+        ],
+      },
+      { title: 'Evaluate chart legends and labels' },
+      { title: 'Define alert and threshold styles' },
+      { title: 'Validate trendline readability' },
     ],
   },
   {
     name: `${SEED_PROJECT_PREFIX}Marketing Site Sprint`,
     description: 'Landing page sections, narrative flow, and call-to-action treatment.',
-    tasks: [
-      'Sketch hero section concepts',
-      'Build testimonial component',
-      'Draft pricing comparison layout',
-      'Test CTA contrast options',
-      'Polish footer information layout',
+    taskTree: [
+      {
+        title: 'Sketch hero section concepts',
+        children: [
+          { title: 'Message-first hero option' },
+          { title: 'Product-visual hero option' },
+        ],
+      },
+      {
+        title: 'Build testimonial component',
+        children: [
+          { title: 'Card carousel variant' },
+          {
+            title: 'Editorial quote variant',
+            children: [
+              { title: 'Author profile metadata row' },
+            ],
+          },
+        ],
+      },
+      { title: 'Draft pricing comparison layout' },
+      { title: 'Test CTA contrast options' },
+      { title: 'Polish footer information layout' },
     ],
   },
 ];
@@ -111,7 +214,7 @@ async function cleanupSeedData() {
   let dailyTasks = [];
   try {
     dailyTasks = await listAll(COLLECTIONS.dailyTasks);
-  } catch (error) {
+  } catch {
     console.warn('Skipping daily task cleanup (collection unavailable or invalid).');
   }
 
@@ -149,26 +252,30 @@ async function createProjectWithTasks(userId, projectSeed, projectPosition) {
 
   const createdTasks = [];
 
-  for (let i = 0; i < projectSeed.tasks.length; i += 1) {
-    const title = projectSeed.tasks[i];
-    const task = await pb.collection(COLLECTIONS.tasks).create({
-      user: userId,
-      title: `${SEED_TASK_PREFIX} ${title}`,
-      project: project.id,
-      parent: null,
-      completed: i % 5 === 0,
-      completed_at: i % 5 === 0 ? new Date().toISOString() : null,
-      position: i,
-    });
+  async function createTreeNodes(nodes, parentId = null, depth = 0) {
+    for (let i = 0; i < nodes.length; i += 1) {
+      const node = nodes[i];
+      const done = Boolean(node.completed ?? (depth === 0 && i % 5 === 0));
 
-    createdTasks.push(task);
+      const task = await pb.collection(COLLECTIONS.tasks).create({
+        user: userId,
+        title: `${SEED_TASK_PREFIX} ${node.title}`,
+        project: project.id,
+        parent: parentId,
+        completed: done,
+        completed_at: done ? new Date().toISOString() : null,
+        position: i,
+      });
+
+      createdTasks.push(task);
+
+      if (node.children?.length) {
+        await createTreeNodes(node.children, task.id, depth + 1);
+      }
+    }
   }
 
-  if (createdTasks.length >= 2) {
-    await pb.collection(COLLECTIONS.tasks).update(createdTasks[1].id, {
-      parent: createdTasks[0].id,
-    });
-  }
+  await createTreeNodes(projectSeed.taskTree);
 
   return { project, tasks: createdTasks };
 }
@@ -217,7 +324,7 @@ async function seed() {
       });
     }
     console.log(`Added ${todaySample.length} items to Today for ${today}.`);
-  } catch (error) {
+  } catch {
     console.warn('Skipping Today seeding (daily tasks collection unavailable or invalid).');
   }
 

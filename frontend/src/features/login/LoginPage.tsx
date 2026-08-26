@@ -125,15 +125,16 @@ function LoginPage() {
                         </Field.Root>
                     ) : null}
 
-                    <Button type='submit' w='full' colorScheme='gray' loading={isLoading}>
+                    <Button type='submit' w='full' bg='var(--accent)' color='white' _hover={{ bg: 'var(--accent-soft)' }} loading={isLoading}>
                         {mode === 'signin' ? 'Log in' : 'Create account'}
                     </Button>
 
                     <Button
                         type='button'
                         variant='ghost'
-                        colorScheme='gray'
                         w='full'
+                        color='var(--text-soft)'
+                        _hover={{ bg: 'var(--panel-bg-soft)', color: 'var(--app-text)' }}
                         onClick={() => {
                             setError(null);
                             setMode((current) => (current === 'signin' ? 'signup' : 'signin'));

@@ -51,15 +51,69 @@ export async function deleteTask(taskId: string): Promise<void> {
     await pb.collection(COLLECTIONS.tasks).delete(taskId);
 }
 
+function collectDescendants(tasks: Task[], rootTaskId: string): Task[] {
+    const byParent = new Map<string, Task[]>();
+
+    tasks.forEach((task) => {
+        if (!task.parent) return;
+        const siblings = byParent.get(task.parent);
+        if (!siblings) byParent.set(task.parent, [task]);
+        else siblings.push(task);
+    });
+
+    const descendants: Task[] = [];
+    const queue = [...(byParent.get(rootTaskId) ?? [])];
+    const seen = new Set<string>();
+
+    while (queue.length > 0) {
+        const current = queue.shift();
+        if (!current || seen.has(current.id)) continue;
+
+        seen.add(current.id);
+        descendants.push(current);
+
+        const children = byParent.get(current.id) ?? [];
+        children.forEach((child) => queue.push(child));
+    }
+
+    return descendants;
+}
+
 export async function toggleTaskCompletion(taskId: string, completed: boolean): Promise<Task> {
     const task = await getTask(taskId);
+    const completedAt = completed ? new Date().toISOString() : null;
 
-    return updateTask(taskId, {
+    const updatedTask = await updateTask(taskId, {
         completed,
-        completed_at: completed ? new Date().toISOString() : null,
+        completed_at: completedAt,
         parent: task.parent,
         project: task.project,
     });
+
+    if (!completed) {
+        return updatedTask;
+    }
+
+    const relatedTasks = await pb
+        .collection(COLLECTIONS.tasks)
+        .getFullList({
+            filter: task.project ? `project = "${task.project}"` : 'project = null',
+            sort: 'position',
+        }) as Task[];
+
+    const descendants = collectDescendants(relatedTasks, taskId);
+    const toComplete = descendants.filter((descendant) => !descendant.completed);
+
+    await Promise.all(
+        toComplete.map((descendant) => updateTask(descendant.id, {
+            completed: true,
+            completed_at: completedAt,
+            parent: descendant.parent,
+            project: descendant.project,
+        })),
+    );
+
+    return updatedTask;
 }
 
 export async function moveTask(taskId: string, input: { parentId?: string | null; position: number; }): Promise<Task> {
